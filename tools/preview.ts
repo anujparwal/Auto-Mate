@@ -6,6 +6,7 @@ import { OwnerPreview } from '../src/owner-preview';
 import { register, type Registration, type WorkflowResult } from '../src/workflow';
 import { SYNTHETIC_VAULT_ROOT, WindowsPasswordStore } from '../src/windows-vault';
 import { LocalAuditJournal } from '../src/audit';
+import { LocalAuditHistory } from '../src/audit-history';
 
 const origin = 'https://registration.auto-mate.test';
 const registration: Registration = {
@@ -58,6 +59,7 @@ export async function openPreviewDemo(options: {
     worker = await chromium.launch({ headless: true });
     viewer = options.viewer ?? await chromium.launch({ headless: options.headlessOwner ?? false });
     owner = await OwnerPreview.open(viewer, {
+      history: new LocalAuditHistory(auditDirectory),
       approval: { origin, credentials: [
         { name: 'Account email', category: policy.category('registration-email') },
         { name: 'New password', category: policy.category('registration-password') },

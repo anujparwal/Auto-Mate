@@ -3,16 +3,63 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { type Audit, PolicyError } from './policy';
 
-const ALLOWED_EVENTS: Readonly<Record<string, true>> = {
+export type AuditEvent =
+  | 'approved'
+  | 'approval_denied'
+  | 'grant_expired'
+  | 'fill_authorized'
+  | 'submit_authorized'
+  | 'denied'
+  | 'completed'
+  | 'takeover'
+  | 'revoked'
+  | 'stopped_all';
+
+export type PolicyReason =
+  | 'INVALID_ORIGIN'
+  | 'INVALID_GRANT'
+  | 'GRANT_EXPIRED'
+  | 'DESTINATION_DENIED'
+  | 'TASK_NOT_ACTIVE'
+  | 'OPERATION_DENIED'
+  | 'CREDENTIAL_DENIED'
+  | 'CATEGORY_DENIED'
+  | 'SUBMISSION_LIMIT'
+  | 'DENIED'
+  | 'DESTINATION_BLOCKED'
+  | 'TASK_ALREADY_EXISTS'
+  | 'INVALID_TASK'
+  | 'AUDIT_UNAVAILABLE';
+
+const ALLOWED_EVENTS: Readonly<Record<AuditEvent, true>> = {
   approved: true, approval_denied: true, fill_authorized: true, submit_authorized: true,
   denied: true, completed: true, takeover: true, revoked: true, stopped_all: true,
+  grant_expired: true,
 };
-const ALLOWED_REASONS: Readonly<Record<string, true>> = {
+const ALLOWED_REASONS: Readonly<Record<PolicyReason, true>> = {
   INVALID_ORIGIN: true, INVALID_GRANT: true, GRANT_EXPIRED: true, DESTINATION_DENIED: true,
   TASK_NOT_ACTIVE: true, OPERATION_DENIED: true, CREDENTIAL_DENIED: true, CATEGORY_DENIED: true,
   SUBMISSION_LIMIT: true, DENIED: true, DESTINATION_BLOCKED: true, TASK_ALREADY_EXISTS: true,
   INVALID_TASK: true, AUDIT_UNAVAILABLE: true,
 };
+
+export function isAuditEvent(value: unknown): value is AuditEvent {
+  return typeof value === 'string' && Object.hasOwn(ALLOWED_EVENTS, value);
+}
+
+export function isPolicyReason(value: unknown): value is PolicyReason {
+  return typeof value === 'string' && Object.hasOwn(ALLOWED_REASONS, value);
+}
+
+export type JournalRow = Readonly<{
+  version: 1;
+  session: string;
+  sequence: number;
+  at: string;
+  task: string | null;
+  event: AuditEvent;
+  reason?: PolicyReason;
+}>;
 
 export class LocalAuditJournal {
   readonly path: string;
@@ -55,11 +102,11 @@ export class LocalAuditJournal {
       this.#fault();
       throw new PolicyError('AUDIT_UNAVAILABLE');
     }
-    if (typeof event.event !== 'string' || !Object.hasOwn(ALLOWED_EVENTS, event.event)) {
+    if (!isAuditEvent(event.event)) {
       this.#fault();
       throw new PolicyError('AUDIT_UNAVAILABLE');
     }
-    if (event.reason !== undefined && (typeof event.reason !== 'string' || !Object.hasOwn(ALLOWED_REASONS, event.reason))) {
+    if (event.reason !== undefined && !isPolicyReason(event.reason)) {
       this.#fault();
       throw new PolicyError('AUDIT_UNAVAILABLE');
     }
@@ -78,25 +125,15 @@ export class LocalAuditJournal {
       taskUuid = mapped;
     }
 
-    const row: {
-      version: 1;
-      session: string;
-      sequence: number;
-      at: string;
-      task: string | null;
-      event: string;
-      reason?: string;
-    } = {
+    const row: JournalRow = {
       version: 1,
       session: this.#session,
       sequence: ++this.#sequence,
       at: new Date().toISOString(),
       task: taskUuid,
       event: event.event,
+      ...(event.reason !== undefined ? { reason: event.reason } : {}),
     };
-    if (event.reason !== undefined) {
-      row.reason = event.reason;
-    }
 
     try {
       const line = JSON.stringify(row) + '\n';

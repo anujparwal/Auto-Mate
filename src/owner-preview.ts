@@ -2,10 +2,14 @@ import type { Browser, BrowserContext, Page } from 'playwright';
 import { captureOwnerFrame } from './preview-capture';
 import type { Annotation, FieldRequest, PreviewPhase, VerifiedField, WorkflowObserver } from './preview-contract';
 import { httpsOrigin, type Layer } from './policy';
+import { LocalAuditHistory, HistoryError, type HistoryErrorCode, isValidUuid } from './audit-history';
 import { setTimeout as delay } from 'node:timers/promises';
 
 declare global {
-  interface Window { autoMateOwnerUpdate: (data: unknown) => void }
+  interface Window {
+    autoMateOwnerUpdate: (data: unknown) => void;
+    autoMateAuditHistory?: (command: unknown) => Promise<unknown>;
+  }
 }
 
 const OWNER_ORIGIN = 'https://owner-preview.auto-mate.invalid';
@@ -26,6 +30,7 @@ export type OwnerApprovalChoice = Readonly<{
 
 export type OwnerOptions = Readonly<{
   approval: OwnerApprovalSummary;
+  history: LocalAuditHistory;
   onApprove: (approval: OwnerApprovalChoice) => void;
   onDeny: () => void;
   onStop: () => void;
@@ -127,6 +132,62 @@ function parseOwnerCommand(raw: unknown): OwnerCommand {
   throw new Error('OWNER_COMMAND_DENIED');
 }
 
+const VALID_HISTORY_CODES: Record<HistoryErrorCode, true> = {
+  INVALID_HISTORY_REQUEST: true,
+  HISTORY_INVALID: true,
+  HISTORY_TOO_LARGE: true,
+  HISTORY_LIMIT: true,
+  HISTORY_UNAVAILABLE: true,
+};
+
+type AuditHistorySessionsCommand = {
+  readonly action: 'sessions';
+  readonly offset: number;
+};
+
+type AuditHistoryEventsCommand = {
+  readonly action: 'events';
+  readonly id: string;
+  readonly offset: number;
+};
+
+type AuditHistoryCommand = AuditHistorySessionsCommand | AuditHistoryEventsCommand;
+
+function parseAuditHistoryCommand(raw: unknown): AuditHistoryCommand | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return null;
+  }
+  const obj: Record<string, unknown> = raw as Record<string, unknown>;
+  const keys = Object.keys(obj);
+  if (!Object.hasOwn(obj, 'action') || typeof obj.action !== 'string') {
+    return null;
+  }
+  const action = obj.action;
+  if (action === 'sessions') {
+    if (keys.length !== 2) return null;
+    if (!Object.hasOwn(obj, 'offset')) return null;
+    const offset = obj.offset;
+    if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0 || Object.is(offset, -0)) {
+      return null;
+    }
+    return { action: 'sessions', offset };
+  }
+  if (action === 'events') {
+    if (keys.length !== 3) return null;
+    if (!Object.hasOwn(obj, 'id') || !Object.hasOwn(obj, 'offset')) return null;
+    const id = obj.id;
+    const offset = obj.offset;
+    if (!isValidUuid(id)) {
+      return null;
+    }
+    if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0 || Object.is(offset, -0)) {
+      return null;
+    }
+    return { action: 'events', id, offset };
+  }
+  return null;
+}
+
 /** Trusted local owner channel. No listener, no HTTP server, no model-visible browser handle. */
 export class OwnerPreview implements WorkflowObserver {
   #worker?: Page;
@@ -144,17 +205,27 @@ export class OwnerPreview implements WorkflowObserver {
   #closed = false;
   #started = false;
   #approval: OwnerApprovalSummary;
+  #history: LocalAuditHistory;
   #approvalError?: string;
   #closure = Promise.withResolvers<void>();
   readonly closed = this.#closure.promise;
 
   private constructor(readonly page: Page, private context: BrowserContext, private options: OwnerOptions, approval: OwnerApprovalSummary) {
     this.#approval = approval;
+    this.#history = options.history;
     this.#origin = approval.origin;
   }
 
   static async open(browser: Browser, options: OwnerOptions): Promise<OwnerPreview> {
     const approval = validateAndFreezeApprovalSummary(options.approval);
+    if (
+      !options.history ||
+      typeof options.history !== 'object' ||
+      typeof options.history.sessions !== 'function' ||
+      typeof options.history.events !== 'function'
+    ) {
+      throw new Error('INVALID_OWNER_OPTIONS');
+    }
     const context = await browser.newContext({ viewport: { width: 1440, height: 920 }, acceptDownloads: false, serviceWorkers: 'block' });
     try {
       const assets = new Map<string, { contentType: string; body: string }>();
@@ -251,6 +322,37 @@ export class OwnerPreview implements WorkflowObserver {
           await preview.state('stopped');
         }
       });
+      await page.exposeBinding('autoMateAuditHistory', async (source, rawCommand: unknown) => {
+        if (source.page !== page || source.frame !== page.mainFrame() || new URL(page.url()).origin !== OWNER_ORIGIN)
+          throw new Error('OWNER_COMMAND_DENIED');
+        const cmd = parseAuditHistoryCommand(rawCommand);
+        if (!cmd) {
+          return { ok: false, code: 'INVALID_HISTORY_REQUEST' } as const;
+        }
+        try {
+          if (cmd.action === 'sessions') {
+            const pageData = await preview.#history.sessions(cmd.offset);
+            return { ok: true, kind: 'sessions', page: pageData } as const;
+          } else {
+            const pageData = await preview.#history.events(cmd.id, cmd.offset);
+            return { ok: true, kind: 'events', page: pageData } as const;
+          }
+        } catch (err: unknown) {
+          let code: HistoryErrorCode = 'HISTORY_UNAVAILABLE';
+          if (err instanceof HistoryError && Object.hasOwn(VALID_HISTORY_CODES, err.code)) {
+            code = err.code;
+          } else if (
+            err &&
+            typeof err === 'object' &&
+            'code' in err &&
+            typeof err.code === 'string' &&
+            Object.hasOwn(VALID_HISTORY_CODES, err.code)
+          ) {
+            code = err.code as HistoryErrorCode;
+          }
+          return { ok: false, code } as const;
+        }
+      });
       page.on('popup', popup => { void popup.close(); });
       page.on('close', () => {
         preview.#closed = true;
@@ -315,7 +417,7 @@ export class OwnerPreview implements WorkflowObserver {
       submitting: 'Submitting the approved registration.',
       completed: 'Registration completed. Closing the protected browser.',
       takeover: 'Association or execution could not be verified. No further credential use permitted.',
-      stopped: 'Owner stopped the task. Further authorization revoked.',
+      stopped: 'Task stopped. Further authorization revoked; the protected browser is closing.',
       denied: 'Owner denied the task. No credential access granted.',
     };
     if (messages[phase]) this.#events.push(messages[phase]!);
