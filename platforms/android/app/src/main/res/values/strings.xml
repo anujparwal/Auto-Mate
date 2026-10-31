@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Auto-Mate Vault</string>
+    <string name="vault_subtitle">Device-Bound Keystore (AES-256-GCM)</string>
+    <string name="action_add_credential">Add Credential</string>
+    <string name="credential_list_empty_title">No Credentials Stored</string>
+    <string name="credential_list_empty_desc">Credentials stored here are encrypted with hardware-backed AES-GCM and strictly gated by biometric or device credential authentication.</string>
+    
+    <!-- Status -->
+    <string name="status_hardware_backed">Hardware KeyStore Active</string>
+    <string name="status_software_fallback">Software Keystore Mode</string>
+    <string name="status_biometric_ready">Biometrics / Lock Screen Enrolled</string>
+    <string name="status_action_required">Setup Lock Screen / Biometric in Settings</string>
+
+    <!-- Create Dialog -->
+    <string name="dialog_create_title">Store Origin-Bound Credential</string>
+    <string name="dialog_create_subtitle">Credential is encrypted with device-bound AES-GCM and bound strictly to an HTTPS origin.</string>
+    <string name="label_origin">HTTPS Origin (e.g. https://login.example.com)</string>
+    <string name="label_username">Username / Account</string>
+    <string name="label_password">Password</string>
+    <string name="action_generate_password">Generate Secure Password</string>
+    <string name="action_save_credential">Save Credential</string>
+    <string name="action_cancel">Cancel</string>
+
+    <!-- Reveal Dialog -->
+    <string name="dialog_reveal_title">Revealed Credential</string>
+    <string name="action_reveal">Reveal</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_close">Close</string>
+    <string name="action_delete">Delete</string>
+    <string name="copied_to_clipboard">Password copied securely to clipboard</string>
+    <string name="auto_clear_notice">Sensitive view clears automatically</string>
+
+    <!-- Biometric prompts -->
+    <string name="biometric_save_title">Authenticate to Store Credential</string>
+    <string name="biometric_save_subtitle">Authorize Keystore AES-GCM encryption with your biometric or device credential</string>
+    <string name="biometric_reveal_title">Authenticate to Reveal Credential</string>
+    <string name="biometric_reveal_subtitle">Confirm your biometric or device credential to decrypt</string>
+    <string name="auth_cancelled">Authentication cancelled. No secret was revealed.</string>
+    <string name="auth_failed">Authentication failed.</string>
+</resources>

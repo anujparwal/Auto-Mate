@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Auto-Mate Security Slate Palette (Material 3 roles) -->
+    <color name="vault_primary">#0F6CBD</color>
+    <color name="vault_on_primary">#FFFFFF</color>
+    <color name="vault_primary_container">#D0E4FF</color>
+    <color name="vault_on_primary_container">#001D36</color>
+
+    <color name="vault_surface">#F8F9FA</color>
+    <color name="vault_on_surface">#1A1C1E</color>
+    <color name="vault_surface_variant">#E1E2EC</color>
+    <color name="vault_on_surface_variant">#44474E</color>
+
+    <color name="vault_outline">#74777F</color>
+    <color name="vault_outline_variant">#C4C7D0</color>
+
+    <color name="vault_error">#BA1A1A</color>
+    <color name="vault_on_error">#FFFFFF</color>
+    <color name="vault_error_container">#FFDAD6</color>
+    <color name="vault_on_error_container">#410002</color>
+
+    <color name="vault_success">#006C4C</color>
+    <color name="vault_success_container">#89F8C7</color>
+
+    <color name="vault_card_background">#FFFFFF</color>
+    <color name="vault_card_stroke">#DDE1E6</color>
+</resources>

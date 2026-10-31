@@ -1,0 +1,17 @@
+node_modules/
+.local/
+*.vault
+*.vault.json
+platforms/android/.gradle/
+platforms/android/local.properties
+platforms/android/**/build/
+*.jks
+*.keystore
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.pem
+*.key
+vault.json
