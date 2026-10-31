@@ -22,10 +22,12 @@ import com.automate.vault.R
 import com.automate.vault.crypto.BiometricAuthHelper
 import com.automate.vault.crypto.KeystoreVault
 import com.automate.vault.crypto.PasswordGenerator
+import com.automate.vault.crypto.VaultPayloadCodec
 import com.automate.vault.databinding.ActivityMainBinding
 import com.automate.vault.databinding.DialogCreateCredentialBinding
 import com.automate.vault.databinding.DialogRevealCredentialBinding
 import com.automate.vault.model.CredentialRecord
+import com.automate.vault.model.DecryptedCredential
 import com.automate.vault.policy.OriginValidator
 import com.automate.vault.storage.VaultStorage
 import com.automate.vault.storage.VaultStorageException
@@ -39,10 +41,12 @@ import java.util.UUID
  * Security guarantees:
  * - WindowManager.LayoutParams.FLAG_SECURE to prevent task-switcher screenshot / recording leaks.
  * - Hardware-backed Android Keystore AES-256-GCM encryption with mandatory user authentication.
- * - Ciphertext bound to record ID and exact origin via GCM Additional Authenticated Data (AAD).
- * - BiometricPrompt strong biometric / device credential gating.
+ * - v2 records expose ONLY opaque ID, version, IV and ciphertext; metadata (origin, username, timestamps)
+ *   is authenticated and encrypted inside the ciphertext.
+ * - BiometricPrompt strong biometric / device credential gating for all cryptographic operations.
+ * - Explicit owner-triggered 2-prompt authenticated upgrade for legacy v1 records.
  * - Fail-closed storage error handling: protects against silent data loss.
- * - Lifecycle-aware wipe of in-memory plaintext secrets.
+ * - Lifecycle-aware wipe of in-memory plaintext secrets and transient dialog state.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -56,12 +60,30 @@ class MainActivity : AppCompatActivity() {
 
     // Transient reference to active reveal dialog and secret memory
     private var activeRevealDialog: AlertDialog? = null
-    private var activeSecretChars: CharArray? = null
+    private var activeDecryptedCredential: DecryptedCredential? = null
     private var autoClearTimer: CountDownTimer? = null
     private var activeRevealBinding: DialogRevealCredentialBinding? = null
+
+    // Transient reference to active create dialog and secret memory
     private var activeCreateDialog: AlertDialog? = null
     private var activeCreateBinding: DialogCreateCredentialBinding? = null
     private var pendingPassword: CharArray? = null
+
+    // Transient reference to active delete confirmation dialog
+    private var activeDeleteDialog: AlertDialog? = null
+
+    // Transient reference to pending legacy upgrade state (step 1 -> step 2)
+    private class PendingUpgrade(
+        val legacyRecord: CredentialRecord.V1,
+        val secretChars: CharArray,
+        val epoch: Int
+    ) {
+        fun wipe() {
+            Arrays.fill(secretChars, '\u0000')
+        }
+    }
+    private var pendingUpgrade: PendingUpgrade? = null
+
     private var authenticationEpoch = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -89,14 +111,26 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         authenticationEpoch++
+
         pendingPassword?.fill('\u0000')
         pendingPassword = null
         activeCreateBinding?.etPassword?.text?.clear()
+        activeCreateBinding?.etUsername?.text?.clear()
+        activeCreateBinding?.etOrigin?.text?.clear()
         activeCreateDialog?.dismiss()
         activeCreateDialog = null
         activeCreateBinding = null
-        // Immediately dismiss dialog and wipe any plaintext from memory on backgrounding
+
+        // Immediately dismiss reveal dialog and wipe decrypted plaintext from memory
         dismissRevealDialogAndWipe()
+
+        // Dismiss delete confirmation dialog
+        activeDeleteDialog?.dismiss()
+        activeDeleteDialog = null
+
+        // Wipe any pending intermediate upgrade secrets
+        pendingUpgrade?.wipe()
+        pendingUpgrade = null
     }
 
     private fun setupWindowInsets() {
@@ -110,6 +144,7 @@ class MainActivity : AppCompatActivity() {
     private fun setupRecyclerView() {
         adapter = CredentialAdapter(
             onRevealClick = { record -> handleRevealCredential(record) },
+            onUpgradeClick = { record -> handleUpgradeCredential(record) },
             onDeleteClick = { record -> handleDeleteCredential(record) }
         )
         binding.recyclerViewCredentials.layoutManager = LinearLayoutManager(this)
@@ -190,6 +225,8 @@ class MainActivity : AppCompatActivity() {
         activeCreateBinding = dialogBinding
         dialog.setOnDismissListener {
             dialogBinding.etPassword.text?.clear()
+            dialogBinding.etUsername.text?.clear()
+            dialogBinding.etOrigin.text?.clear()
             activeCreateBinding = null
             activeCreateDialog = null
         }
@@ -237,9 +274,8 @@ class MainActivity : AppCompatActivity() {
             val passwordChars = passwordStr.toCharArray()
             pendingPassword?.fill('\u0000')
             pendingPassword = passwordChars
-            val requestEpoch = authenticationEpoch
+            val requestEpoch = ++authenticationEpoch
             val recordId = UUID.randomUUID().toString()
-            val aadData = KeystoreVault.computeAad(recordId, normalizedOrigin)
 
             // Authenticate operation via BiometricPrompt before encrypting
             try {
@@ -254,21 +290,19 @@ class MainActivity : AppCompatActivity() {
                             return@success
                         }
                         try {
-                            val encryptedPayload = keystoreVault.encryptWithCipher(
-                                authenticatedCipher,
-                                passwordChars,
-                                aadData
-                            )
-                            val record = CredentialRecord(
+                            val decrypted = DecryptedCredential(
                                 id = recordId,
                                 origin = normalizedOrigin,
                                 username = username,
-                                encryptedPassword = encryptedPayload
+                                password = passwordChars,
+                                createdAt = System.currentTimeMillis(),
+                                updatedAt = System.currentTimeMillis()
                             )
+                            val record = VaultPayloadCodec.encrypt(authenticatedCipher, decrypted)
                             vaultStorage.saveCredential(record)
                             refreshCredentialsList()
                             dialog.dismiss()
-                            showFeedback("Credential encrypted with Keystore AES-GCM and saved.")
+                            showFeedback("Credential metadata encrypted with Keystore AES-GCM and saved.")
                         } catch (e: Exception) {
                             showFeedback("Encryption error: ${e.message}")
                         } finally {
@@ -290,54 +324,96 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         dialog.show()
     }
 
     private fun handleRevealCredential(record: CredentialRecord) {
-        try {
-            val cipher = keystoreVault.initDecryptCipher(record.encryptedPassword.iv)
-            val aadData = KeystoreVault.computeAad(record.id, record.origin)
-            val requestEpoch = authenticationEpoch
+        val requestEpoch = ++authenticationEpoch
+        when (record) {
+            is CredentialRecord.V2 -> {
+                try {
+                    val cipher = keystoreVault.initDecryptCipher(record.iv)
 
-            biometricAuthHelper.authenticateWithCipher(
-                cipher = cipher,
-                title = getString(R.string.biometric_reveal_title),
-                subtitle = "${record.origin} (${record.username})",
-                onSuccess = success@ { authenticatedCipher ->
-                    if (requestEpoch != authenticationEpoch || isFinishing || isDestroyed) return@success
-                    try {
-                        val decrypted = keystoreVault.decryptWithCipher(
-                            authenticatedCipher,
-                            record.encryptedPassword,
-                            aadData
-                        )
-                        showRevealDialog(record, decrypted)
-                    } catch (e: Exception) {
-                        showFeedback("Decryption failed (tag or AAD mismatch): ${e.message}")
-                    }
-                },
-                onError = { _, message ->
-                    showFeedback("Authentication error: $message")
-                },
-                onCancel = {
-                    showFeedback(getString(R.string.auth_cancelled))
+                    biometricAuthHelper.authenticateWithCipher(
+                        cipher = cipher,
+                        title = getString(R.string.biometric_reveal_title),
+                        subtitle = getString(R.string.biometric_reveal_v2_subtitle),
+                        onSuccess = success@ { authenticatedCipher ->
+                            if (requestEpoch != authenticationEpoch || isFinishing || isDestroyed) return@success
+                            try {
+                                val decrypted = VaultPayloadCodec.decrypt(authenticatedCipher, record)
+                                showRevealDialog(decrypted, isLegacy = false)
+                            } catch (e: Exception) {
+                                showFeedback("Decryption failed (tag or AAD mismatch): ${e.message}")
+                            }
+                        },
+                        onError = { _, message ->
+                            showFeedback("Authentication error: $message")
+                        },
+                        onCancel = {
+                            showFeedback(getString(R.string.auth_cancelled))
+                        }
+                    )
+                } catch (e: Exception) {
+                    showFeedback("Keystore decrypt error: ${e.message}")
                 }
-            )
-        } catch (e: Exception) {
-            showFeedback("Keystore decrypt error: ${e.message}")
+            }
+            is CredentialRecord.V1 -> {
+                try {
+                    val cipher = keystoreVault.initDecryptCipher(record.encryptedPassword.iv)
+                    val aadData = KeystoreVault.computeAadV1(record.id, record.origin)
+
+                    biometricAuthHelper.authenticateWithCipher(
+                        cipher = cipher,
+                        title = getString(R.string.biometric_reveal_title),
+                        subtitle = getString(R.string.biometric_reveal_v1_subtitle),
+                        onSuccess = success@ { authenticatedCipher ->
+                            if (requestEpoch != authenticationEpoch || isFinishing || isDestroyed) return@success
+                            try {
+                                val secretChars = keystoreVault.decryptWithCipher(
+                                    authenticatedCipher,
+                                    record.encryptedPassword,
+                                    aadData
+                                )
+                                val decrypted = DecryptedCredential(
+                                    id = record.id,
+                                    origin = record.origin,
+                                    username = record.username,
+                                    password = secretChars,
+                                    createdAt = record.createdAt,
+                                    updatedAt = record.updatedAt
+                                )
+                                showRevealDialog(decrypted, isLegacy = true)
+                            } catch (e: Exception) {
+                                showFeedback("Decryption failed (tag or AAD mismatch): ${e.message}")
+                            }
+                        },
+                        onError = { _, message ->
+                            showFeedback("Authentication error: $message")
+                        },
+                        onCancel = {
+                            showFeedback(getString(R.string.auth_cancelled))
+                        }
+                    )
+                } catch (e: Exception) {
+                    showFeedback("Keystore decrypt error: ${e.message}")
+                }
+            }
         }
     }
 
-    private fun showRevealDialog(record: CredentialRecord, secret: CharArray) {
+    private fun showRevealDialog(credential: DecryptedCredential, isLegacy: Boolean) {
         dismissRevealDialogAndWipe()
 
-        activeSecretChars = secret
+        activeDecryptedCredential = credential
         val dialogBinding = DialogRevealCredentialBinding.inflate(LayoutInflater.from(this))
         activeRevealBinding = dialogBinding
 
-        dialogBinding.tvRevealOrigin.text = record.origin
-        dialogBinding.tvRevealUsername.text = record.username
-        dialogBinding.tvDecryptedPassword.text = String(secret)
+        dialogBinding.tvRevealOrigin.text = credential.origin
+        dialogBinding.tvRevealUsername.text = credential.username
+        dialogBinding.tvDecryptedPassword.text = String(credential.password)
+        dialogBinding.tvLegacyWarning.visibility = if (isLegacy) View.VISIBLE else View.GONE
 
         val dialog = MaterialAlertDialogBuilder(this)
             .setView(dialogBinding.root)
@@ -349,7 +425,7 @@ class MainActivity : AppCompatActivity() {
         // Clipboard copy with Android 13+ sensitive content flag
         dialogBinding.btnCopyPassword.setOnClickListener {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val clip = ClipData.newPlainText("Vault Password", String(secret))
+            val clip = ClipData.newPlainText("Vault Password", String(credential.password))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 clip.description.extras = PersistableBundle().apply {
                     putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
@@ -381,6 +457,7 @@ class MainActivity : AppCompatActivity() {
             }
         }.start()
 
+        dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         dialog.show()
     }
 
@@ -388,32 +465,226 @@ class MainActivity : AppCompatActivity() {
         autoClearTimer?.cancel()
         autoClearTimer = null
         activeRevealBinding?.tvDecryptedPassword?.text = ""
+        activeRevealBinding?.tvRevealOrigin?.text = ""
+        activeRevealBinding?.tvRevealUsername?.text = ""
         activeRevealBinding = null
 
         activeRevealDialog?.dismiss()
         activeRevealDialog = null
 
-        activeSecretChars?.let {
-            passwordGenerator.wipe(it)
-        }
-        activeSecretChars = null
+        activeDecryptedCredential?.wipe()
+        activeDecryptedCredential = null
     }
 
     private fun handleDeleteCredential(record: CredentialRecord) {
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.action_delete)
-            .setMessage("Permanently remove credential for ${record.origin} (${record.username})?")
-            .setPositiveButton("Delete") { _, _ ->
+        val requestEpoch = ++authenticationEpoch
+        when (record) {
+            is CredentialRecord.V2 -> {
                 try {
-                    vaultStorage.deleteCredential(record.id)
+                    val cipher = keystoreVault.initDecryptCipher(record.iv)
+
+                    biometricAuthHelper.authenticateWithCipher(
+                        cipher = cipher,
+                        title = getString(R.string.biometric_delete_title),
+                        subtitle = getString(R.string.biometric_delete_subtitle),
+                        onSuccess = success@ { authenticatedCipher ->
+                            if (requestEpoch != authenticationEpoch || isFinishing || isDestroyed) return@success
+                            val decrypted = try {
+                                VaultPayloadCodec.decrypt(authenticatedCipher, record)
+                            } catch (e: Exception) {
+                                showFeedback("Failed to authenticate credential for deletion: ${e.message}")
+                                return@success
+                            }
+                            showDeleteConfirmationDialog(
+                                recordId = record.id,
+                                origin = decrypted.origin,
+                                username = decrypted.username,
+                                onDismissCleanup = { decrypted.wipe() }
+                            )
+                        },
+                        onError = { _, message ->
+                            showFeedback("Authentication error: $message")
+                        },
+                        onCancel = {
+                            showFeedback(getString(R.string.auth_cancelled))
+                        }
+                    )
+                } catch (e: Exception) {
+                    showFeedback("Keystore initialization error: ${e.message}")
+                }
+            }
+            is CredentialRecord.V1 -> {
+                try {
+                    val cipher = keystoreVault.initDecryptCipher(record.encryptedPassword.iv)
+                    val aadData = KeystoreVault.computeAadV1(record.id, record.origin)
+
+                    biometricAuthHelper.authenticateWithCipher(
+                        cipher = cipher,
+                        title = getString(R.string.biometric_delete_title),
+                        subtitle = getString(R.string.biometric_delete_subtitle),
+                        onSuccess = success@ { authenticatedCipher ->
+                            if (requestEpoch != authenticationEpoch || isFinishing || isDestroyed) return@success
+                            try {
+                                val secret = keystoreVault.decryptWithCipher(
+                                    authenticatedCipher,
+                                    record.encryptedPassword,
+                                    aadData
+                                )
+                                Arrays.fill(secret, '\u0000')
+                            } catch (e: Exception) {
+                                showFeedback("Failed to authenticate legacy record for deletion: ${e.message}")
+                                return@success
+                            }
+                            showDeleteConfirmationDialog(
+                                recordId = record.id,
+                                origin = record.origin,
+                                username = record.username,
+                                onDismissCleanup = {}
+                            )
+                        },
+                        onError = { _, message ->
+                            showFeedback("Authentication error: $message")
+                        },
+                        onCancel = {
+                            showFeedback(getString(R.string.auth_cancelled))
+                        }
+                    )
+                } catch (e: Exception) {
+                    showFeedback("Keystore initialization error: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun showDeleteConfirmationDialog(
+        recordId: String,
+        origin: String,
+        username: String,
+        onDismissCleanup: () -> Unit
+    ) {
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.action_delete)
+            .setMessage(getString(R.string.delete_confirmation_message, origin, username))
+            .setPositiveButton(R.string.action_delete) { _, _ ->
+                try {
+                    vaultStorage.deleteCredential(recordId)
                     refreshCredentialsList()
                     showFeedback("Credential deleted.")
                 } catch (e: VaultStorageException) {
                     showFeedback("Delete failed: ${e.message}")
                 }
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+            .setNegativeButton(R.string.action_cancel, null)
+            .setOnDismissListener {
+                onDismissCleanup()
+                activeDeleteDialog = null
+            }
+            .create()
+
+        activeDeleteDialog = dialog
+        dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        dialog.show()
+    }
+
+    private fun handleUpgradeCredential(record: CredentialRecord.V1) {
+        try {
+            val decryptCipher = keystoreVault.initDecryptCipher(record.encryptedPassword.iv)
+            val v1Aad = KeystoreVault.computeAadV1(record.id, record.origin)
+            val requestEpoch = ++authenticationEpoch
+
+            // Step 1: Authenticate to decrypt legacy secret
+            biometricAuthHelper.authenticateWithCipher(
+                cipher = decryptCipher,
+                title = getString(R.string.biometric_upgrade_step1_title),
+                subtitle = getString(R.string.biometric_upgrade_step1_subtitle),
+                onSuccess = step1Success@ { authenticatedDecryptCipher ->
+                    if (requestEpoch != authenticationEpoch || isFinishing || isDestroyed) {
+                        return@step1Success
+                    }
+                    val secretChars = try {
+                        keystoreVault.decryptWithCipher(
+                            authenticatedDecryptCipher,
+                            record.encryptedPassword,
+                            v1Aad
+                        )
+                    } catch (e: Exception) {
+                        showFeedback("Decryption failed during upgrade: ${e.message}")
+                        return@step1Success
+                    }
+
+                    pendingUpgrade?.wipe()
+                    val currentPending = PendingUpgrade(record, secretChars, requestEpoch)
+                    pendingUpgrade = currentPending
+
+                    // Step 2: Authenticate to encrypt full payload into v2 envelope
+                    executeUpgradeStep2(currentPending)
+                },
+                onError = { _, message ->
+                    showFeedback("Upgrade authentication error: $message")
+                },
+                onCancel = {
+                    showFeedback(getString(R.string.upgrade_cancelled))
+                }
+            )
+        } catch (e: Exception) {
+            showFeedback("Keystore initialization error: ${e.message}")
+        }
+    }
+
+    private fun executeUpgradeStep2(pending: PendingUpgrade) {
+        try {
+            val encryptCipher = keystoreVault.initEncryptCipher()
+            val requestEpoch = authenticationEpoch
+            val record = pending.legacyRecord
+
+            biometricAuthHelper.authenticateWithCipher(
+                cipher = encryptCipher,
+                title = getString(R.string.biometric_upgrade_step2_title),
+                subtitle = getString(R.string.biometric_upgrade_step2_subtitle),
+                onSuccess = step2Success@ { authenticatedEncryptCipher ->
+                    if (requestEpoch != authenticationEpoch || requestEpoch != pending.epoch || isFinishing || isDestroyed) {
+                        pending.wipe()
+                        if (pendingUpgrade === pending) pendingUpgrade = null
+                        return@step2Success
+                    }
+                    try {
+                        val decrypted = DecryptedCredential(
+                            id = record.id,
+                            origin = record.origin,
+                            username = record.username,
+                            password = pending.secretChars,
+                            createdAt = record.createdAt,
+                            updatedAt = record.updatedAt
+                        )
+                        val v2Record = VaultPayloadCodec.encrypt(authenticatedEncryptCipher, decrypted)
+
+                        // Atomically replace legacy record with encrypted v2 envelope
+                        vaultStorage.saveCredential(v2Record)
+                        refreshCredentialsList()
+                        showFeedback(getString(R.string.upgrade_success))
+                    } catch (e: Exception) {
+                        showFeedback("Upgrade encryption failed: ${e.message}. Legacy record preserved.")
+                    } finally {
+                        pending.wipe()
+                        if (pendingUpgrade === pending) pendingUpgrade = null
+                    }
+                },
+                onError = { _, message ->
+                    pending.wipe()
+                    if (pendingUpgrade === pending) pendingUpgrade = null
+                    showFeedback("Upgrade step 2 authentication error: $message. Legacy record preserved.")
+                },
+                onCancel = {
+                    pending.wipe()
+                    if (pendingUpgrade === pending) pendingUpgrade = null
+                    showFeedback(getString(R.string.upgrade_cancelled))
+                }
+            )
+        } catch (e: Exception) {
+            pending.wipe()
+            if (pendingUpgrade === pending) pendingUpgrade = null
+            showFeedback("Keystore step 2 initialization error: ${e.message}")
+        }
     }
 
     private fun showFeedback(message: String) {

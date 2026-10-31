@@ -6,7 +6,8 @@
   "scripts": {
     "test": "bun test",
     "smoke": "bun run tools/smoke.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "preview": "bun run tools/preview.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

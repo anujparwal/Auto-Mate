@@ -32,12 +32,13 @@ class KeystoreVault(
         private const val KEY_SIZE_BITS = 256
 
         /**
-         * Computes canonical Additional Authenticated Data (AAD) to cryptographically
-         * bind the ciphertext to a specific record ID and exact normalized origin.
+         * Computes canonical Additional Authenticated Data (AAD) for legacy v1 records
+         * binding record ID and normalized origin.
          */
-        fun computeAad(recordId: String, origin: String): ByteArray {
+        fun computeAadV1(recordId: String, origin: String): ByteArray {
             return "AutoMate:v1:id=${recordId}:origin=${origin}".toByteArray(StandardCharsets.UTF_8)
         }
+
     }
 
     enum class SecurityAssurance {
@@ -110,6 +111,9 @@ class KeystoreVault(
                     "Security policy violation: Master key '$keyAlias' does not require user authentication. Rejecting insecure key."
                 )
             }
+            if (keyInfo.userAuthenticationValidityDurationSeconds > 0) {
+                throw SecurityException("Vault key must require per-operation authentication.")
+            }
         } catch (e: Exception) {
             throw SecurityException("Unable to verify authenticated key policy.", e)
         }
@@ -156,28 +160,6 @@ class KeystoreVault(
     }
 
     /**
-     * Encrypts plaintext using an authenticated Cipher and binds to Additional Authenticated Data (AAD).
-     * Plaintext bytes are wiped from memory immediately after encryption.
-     */
-    fun encryptWithCipher(
-        cipher: Cipher,
-        secret: CharArray,
-        aadData: ByteArray
-    ): EncryptedPayload {
-        cipher.updateAAD(aadData)
-        val plaintextBytes = charsToBytes(secret)
-        try {
-            val ciphertext = cipher.doFinal(plaintextBytes)
-            return EncryptedPayload(
-                iv = cipher.iv,
-                ciphertext = ciphertext
-            )
-        } finally {
-            Arrays.fill(plaintextBytes, 0.toByte())
-        }
-    }
-
-    /**
      * Decrypts ciphertext using an authenticated Cipher and verifies Additional Authenticated Data (AAD).
      * Intermediate plaintext bytes are wiped from memory immediately.
      */
@@ -195,13 +177,6 @@ class KeystoreVault(
         }
     }
 
-    private fun charsToBytes(chars: CharArray): ByteArray {
-        val charBuffer = CharBuffer.wrap(chars)
-        val byteBuffer: ByteBuffer = StandardCharsets.UTF_8.encode(charBuffer)
-        val bytes = ByteArray(byteBuffer.remaining())
-        byteBuffer.get(bytes)
-        return bytes
-    }
 
     private fun bytesToChars(bytes: ByteArray): CharArray {
         val byteBuffer = ByteBuffer.wrap(bytes)

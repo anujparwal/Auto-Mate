@@ -1,27 +1,58 @@
 <#
 .SYNOPSIS
     Auto-Mate Native Encrypted Vault for Windows.
-    Provides DPAPI CurrentUser encrypted storage, CSPRNG password generation,
-    cryptographic origin binding, atomic persistence, and restrictive ACLs.
+    Provides DPAPI CurrentUser encrypted storage with v2 metadata-protecting envelope,
+    CSPRNG password generation, cryptographic origin binding, lossless atomic v1 migration,
+    atomic persistence, restrictive ACLs, and default mandatory Windows Hello gating.
 
 .DESCRIPTION
     Security Design & Boundaries:
-    1. Cryptography: Protected via DPAPI (DataProtectionScope.CurrentUser).
-    2. Strict Origin Binding: Every entry is bound cryptographically to a canonical HTTPS origin.
-       Decryption entropy incorporates SHA-256 of the canonical origin. Decryption
-       fails cryptographically if attempted under a different origin.
-    3. Storage Security: Vault directory and files are configured with restrictive NTFS
+    1. Cryptography & v2 Envelope:
+       - The outer vault file envelope exposes ONLY schema version and ciphertext:
+         { "version": 2, "cipherText": "<base64 DPAPI blob>" }
+       - No origin, recordId, usernames, timestamps, secrets, or digests are exposed at rest.
+       - Authenticated internal vault is protected via DPAPI (DataProtectionScope.CurrentUser)
+         with fixed version-specific public entropy SHA-256("AutoMate:Vault:Entropy:v2").
+       - Decrypted records are strictly verified for canonical HTTPS origin and recordId match.
+    2. Windows Hello Biometric/PIN Verification:
+       - Windows Hello authentication via native WinRT desktop interop is mandatory by default
+         for ALL normal vault operations (Store, Generate, List, Reveal, Broker).
+       - Verification occurs before any vault files are read, written, or migrated, and before
+         acquiring the vault concurrency mutex.
+       - Hardware availability is NOT authentication. If Hello is unconfigured, absent, canceled,
+         busy, or times out, access is denied immediately (VAULT_AUTHENTICATION_REQUIRED).
+       - Authentication messages display the requested action and destination origin only;
+         secrets and record identifiers are never included in prompts.
+    3. Isolated Synthetic Mode (-Synthetic):
+       - For automated tests and CI environments where biometric hardware is unavailable.
+       - Cryptographically separated DPAPI entropy namespaces:
+         * Normal v2:    SHA-256("AutoMate:Vault:Entropy:v2")
+         * Synthetic v2: SHA-256("AutoMate:Synthetic:Vault:Entropy:v2")
+         * Normal v1:    SHA-256("AutoMate:Vault:OriginEntropy:v1:" + origin)
+         * Synthetic v1: SHA-256("AutoMate:Synthetic:Vault:OriginEntropy:v1:" + origin)
+       - Strict path isolation: requires explicit -VaultPath inside a child directory under
+         [IO.Path]::GetTempPath()/AutoMate-Synthetic/<child>/...; default production path is denied.
+       - Strict origin isolation: origins must use reserved .test domains.
+       - A synthetic flag CANNOT decrypt normal production v1 or v2 vaults even if files are copied.
+       - Successful broker responses declare authentication mode:
+         'windows-hello' (normal) or 'synthetic-isolated' (synthetic).
+    4. Lossless Atomic v1 Migration:
+       - Legacy v1 vaults exposing plaintext origin/recordId metadata with per-record DPAPI
+         ciphertext are decrypted, validated, and atomically converted to v2 on load.
+       - Preserves record createdAt/updatedAt timestamps, secret, and global created timestamp.
+       - Fail-closed: corrupt/tampered records, duplicate identities, or schema errors refuse
+         mutation without modifying existing data.
+    5. Storage Security: Vault directory and files are configured with restrictive NTFS
        ACLs permitting access ONLY to the current user SID. File inheritance is disabled.
        Fails closed if restrictive permissions cannot be applied.
-    4. Threat Boundary: DPAPI CurrentUser does NOT provide per-use biometric prompts.
-       This CLI is TRUSTED-OWNER ONLY and MUST NOT be exposed as an agent tool to AI models.
-    5. Windows Hello authentication is not implemented. -RequireHello always denies use.
-       Checking hardware availability is not proof of user authentication.
-    6. Secret Hygiene: Secrets are never accepted as command-line arguments.
+    6. Threat Boundary: DPAPI CurrentUser does NOT provide per-use biometric prompts by itself;
+       Windows Hello provides the per-use owner consent barrier. This CLI is TRUSTED-OWNER ONLY
+       and MUST NOT be exposed as an agent tool to AI models.
+    7. Secret Hygiene: Secrets are never accepted as command-line arguments.
        Interactive input uses SecureStrings. Error messages never echo sensitive values.
-       No secret fingerprints are stored or returned.
-    7. Broker IPC: A dedicated stdin/stdout JSON protocol is provided for the trusted
-       parent browser executor (autofill & signup workflows) over private process pipes.
+       No secret fingerprints or hashes are stored or returned.
+    8. Broker IPC: A dedicated stdin/stdout JSON protocol is provided for the trusted
+       parent browser executor over private process pipes. Output is strictly machine JSON.
 #>
 
 [CmdletBinding(DefaultParameterSetName = "Help")]
@@ -41,6 +72,9 @@ param (
     [Parameter(ParameterSetName = "Broker", Mandatory = $true)]
     [switch]$Broker,
 
+    [Parameter(ParameterSetName = "Diagnostic", Mandatory = $true)]
+    [switch]$CheckAvailability,
+
     [Parameter(ParameterSetName = "Help")]
     [switch]$Help,
 
@@ -59,11 +93,8 @@ param (
     [Parameter(ParameterSetName = "Generate")]
     [int]$Length = 24,
 
-    [Parameter(ParameterSetName = "Store")]
-    [Parameter(ParameterSetName = "Generate")]
-    [Parameter(ParameterSetName = "Reveal")]
-    [Parameter(ParameterSetName = "Broker")]
-    [switch]$RequireHello,
+    [Parameter()]
+    [switch]$Synthetic,
 
     [Parameter()]
     [string]$VaultPath
@@ -87,15 +118,48 @@ try {
 # Helpers: Paths, Origin, Cryptography, ACLs
 # ==============================================================================
 
-function Resolve-VaultFilePath {
+function Assert-SyntheticVaultPath {
     param ([string]$PathInput)
+    if ([string]::IsNullOrWhiteSpace($PathInput)) {
+        throw "Synthetic mode requires an explicit -VaultPath."
+    }
+    $resolved = [System.IO.Path]::GetFullPath($PathInput)
+    $tempBase = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+    $syntheticRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($tempBase, "AutoMate-Synthetic"))
+
+    $rootWithSep = $syntheticRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $resolved.StartsWith($rootWithSep, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Synthetic vault path denied: path must be located inside '$syntheticRoot'."
+    }
+
+    $relative = $resolved.Substring($rootWithSep.Length)
+    $parts = $relative.Split([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    if ($parts.Length -lt 2 -or [string]::IsNullOrWhiteSpace($parts[0])) {
+        throw "Synthetic vault path denied: path must be inside a child directory under '$syntheticRoot'."
+    }
+}
+
+function Resolve-VaultFilePath {
+    param (
+        [string]$PathInput,
+        [switch]$Synthetic
+    )
     $candidate = $PathInput
     if ([string]::IsNullOrWhiteSpace($candidate)) {
         if (-not [string]::IsNullOrWhiteSpace($VaultPath)) {
             $candidate = $VaultPath
         } elseif (-not [string]::IsNullOrWhiteSpace($env:AUTOMATE_VAULT_PATH)) {
             $candidate = $env:AUTOMATE_VAULT_PATH
-        } else {
+        }
+    }
+
+    if ($Synthetic) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
+            throw "Synthetic mode requires an explicit -VaultPath."
+        }
+        Assert-SyntheticVaultPath -PathInput $candidate
+    } else {
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
             $localAppData = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::LocalApplicationData)
             if ([string]::IsNullOrWhiteSpace($localAppData)) {
                 $localAppData = [System.IO.Path]::Combine($env:USERPROFILE, "AppData", "Local")
@@ -105,13 +169,20 @@ function Resolve-VaultFilePath {
     }
 
     if ([System.IO.Directory]::Exists($candidate) -or $candidate.EndsWith("\") -or $candidate.EndsWith("/")) {
-        return [System.IO.Path]::Combine($candidate, "vault.json")
+        $candidate = [System.IO.Path]::Combine($candidate, "vault.json")
     }
-    return [System.IO.Path]::GetFullPath($candidate)
+    $fullPath = [System.IO.Path]::GetFullPath($candidate)
+    if ($Synthetic) {
+        Assert-SyntheticVaultPath -PathInput $fullPath
+    }
+    return $fullPath
 }
 
 function Get-CanonicalOrigin {
-    param ([string]$OriginInput)
+    param (
+        [string]$OriginInput,
+        [switch]$Synthetic
+    )
     if ([string]::IsNullOrWhiteSpace($OriginInput)) {
         throw "Invalid origin: origin cannot be empty."
     }
@@ -148,6 +219,12 @@ function Get-CanonicalOrigin {
         throw "Invalid origin: hostname is missing or invalid."
     }
 
+    if ($Synthetic) {
+        if (-not $hostName.EndsWith(".test")) {
+            throw "Synthetic origin denied: origin host must end with '.test'."
+        }
+    }
+
     if ($uriResult.IsDefaultPort) {
         return ("https://{0}" -f $hostName)
     } else {
@@ -155,11 +232,35 @@ function Get-CanonicalOrigin {
     }
 }
 
-function Get-OriginEntropy {
-    param ([string]$CanonicalOrigin)
+function Get-V2VaultEntropy {
+    param ([switch]$Synthetic)
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
     try {
-        $saltString = "AutoMate:Vault:OriginEntropy:v1:" + $CanonicalOrigin
+        $entropyString = if ($Synthetic) {
+            "AutoMate:Synthetic:Vault:Entropy:v2"
+        } else {
+            "AutoMate:Vault:Entropy:v2"
+        }
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($entropyString)
+        return $sha256.ComputeHash($bytes)
+    } finally {
+        $sha256.Dispose()
+    }
+}
+
+function Get-V1OriginEntropy {
+    param (
+        [string]$CanonicalOrigin,
+        [switch]$Synthetic
+    )
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $prefix = if ($Synthetic) {
+            "AutoMate:Synthetic:Vault:OriginEntropy:v1:"
+        } else {
+            "AutoMate:Vault:OriginEntropy:v1:"
+        }
+        $saltString = $prefix + $CanonicalOrigin
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($saltString)
         return $sha256.ComputeHash($bytes)
     } finally {
@@ -250,7 +351,9 @@ function Save-VaultFileAtomic {
         try {
             [System.IO.File]::Replace($tempFile, $FilePath, [System.Management.Automation.Language.NullString]::Value)
         } catch {
-            [System.IO.File]::Delete($tempFile)
+            if ([System.IO.File]::Exists($tempFile)) {
+                try { [System.IO.File]::Delete($tempFile) } catch {}
+            }
             throw "Atomic vault replacement failed. Existing vault was not overwritten."
         }
     } else {
@@ -258,32 +361,323 @@ function Save-VaultFileAtomic {
     }
 }
 
-function Load-VaultData {
-    param ([string]$FilePath)
-    if (-not [System.IO.File]::Exists($FilePath)) {
-        return @{
-            version = 1
-            created = [System.DateTime]::UtcNow.ToString("o")
-            records = (New-Object System.Collections.ArrayList)
-        }
+function Save-VaultData {
+    param (
+        [string]$FilePath,
+        [hashtable]$VaultData,
+        [switch]$Synthetic
+    )
+    if ($VaultData.version -ne 2) {
+        throw "Cannot save vault: version must be 2."
     }
+    if ([string]::IsNullOrWhiteSpace($VaultData.created)) {
+        throw "Cannot save vault: created timestamp is missing."
+    }
+    if ($null -eq $VaultData.records) {
+        throw "Cannot save vault: records collection is missing."
+    }
+
+    $seenIdentities = New-Object 'System.Collections.Generic.HashSet[string]'
+    $cleanRecords = New-Object System.Collections.ArrayList
+    foreach ($r in $VaultData.records) {
+        if ([string]::IsNullOrWhiteSpace($r.origin)) { throw "Cannot save vault: record missing origin." }
+        if ([string]::IsNullOrWhiteSpace($r.recordId)) { throw "Cannot save vault: record missing recordId." }
+        if ($null -eq $r.secret -or [string]$r.secret -eq "") { throw "Cannot save vault: record missing secret." }
+        if ([string]::IsNullOrWhiteSpace($r.createdAt)) { throw "Cannot save vault: record missing createdAt." }
+        if ([string]::IsNullOrWhiteSpace($r.updatedAt)) { throw "Cannot save vault: record missing updatedAt." }
+        $canonOrigin = Get-CanonicalOrigin -OriginInput $r.origin -Synthetic:$Synthetic
+        $key = "$canonOrigin|$($r.recordId)"
+        if ($seenIdentities.Contains($key)) {
+            throw "Cannot save vault: duplicate identity detected for origin '$canonOrigin' and recordId '$($r.recordId)'."
+        }
+        [void]$seenIdentities.Add($key)
+        $cleanRecords.Add([PSCustomObject]@{
+            origin    = $canonOrigin
+            recordId  = [string]$r.recordId
+            secret    = [string]$r.secret
+            createdAt = [string]$r.createdAt
+            updatedAt = [string]$r.updatedAt
+        }) | Out-Null
+    }
+
+    $internalObj = [PSCustomObject]@{
+        version = 2
+        created = [string]$VaultData.created
+        records = $cleanRecords
+    }
+
+    $internalJson = $internalObj | ConvertTo-Json -Depth 10 -Compress
+    $payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($internalJson)
+    $v2Entropy = Get-V2VaultEntropy -Synthetic:$Synthetic
+    $cipherBytes = $null
+
     try {
-        $content = [System.IO.File]::ReadAllText($FilePath, [System.Text.Encoding]::UTF8)
-        $data = $content | ConvertFrom-Json
-        $recordsList = New-Object System.Collections.ArrayList
-        if ($data.records) {
-            foreach ($rec in $data.records) {
-                $recordsList.Add($rec) | Out-Null
+        $cipherBytes = [System.Security.Cryptography.ProtectedData]::Protect(
+            $payloadBytes,
+            $v2Entropy,
+            [System.Security.Cryptography.DataProtectionScope]::CurrentUser
+        )
+    } finally {
+        [System.Array]::Clear($payloadBytes, 0, $payloadBytes.Length)
+        [System.Array]::Clear($v2Entropy, 0, $v2Entropy.Length)
+    }
+
+    $cipherBase64 = [System.Convert]::ToBase64String($cipherBytes)
+
+    # v2 envelope exposes ONLY schema version + cipherText
+    $envelope = [ordered]@{
+        version    = 2
+        cipherText = $cipherBase64
+    }
+    $envelopeJson = $envelope | ConvertTo-Json -Compress
+
+    Save-VaultFileAtomic -FilePath $FilePath -JsonContent $envelopeJson
+}
+
+function Assert-VaultObjectSchema {
+    param ([object]$Value, [string[]]$Required, [string[]]$Optional = @())
+    if ($Value -isnot [System.Management.Automation.PSCustomObject]) { throw "Invalid vault object." }
+    $names = @($Value.PSObject.Properties | ForEach-Object { $_.Name })
+    foreach ($name in $Required) {
+        if ($names -cnotcontains $name) { throw "Missing vault property." }
+    }
+    foreach ($name in $names) {
+        if ($Required -cnotcontains $name -and $Optional -cnotcontains $name) { throw "Unknown vault property." }
+    }
+}
+
+function Load-VaultData {
+    param (
+        [string]$FilePath,
+        [switch]$AllowMissing,
+        [switch]$Synthetic
+    )
+    if (-not [System.IO.File]::Exists($FilePath)) {
+        if ($AllowMissing) {
+            return @{
+                version = 2
+                created = [System.DateTime]::UtcNow.ToString("o")
+                records = New-Object System.Collections.ArrayList
             }
         }
+        return $null
+    }
+
+    $fileInfo = New-Object System.IO.FileInfo($FilePath)
+    if ($fileInfo.Length -eq 0) {
+        throw "Vault file is empty. Refusing silent fallback."
+    }
+
+    $content = [System.IO.File]::ReadAllText($FilePath, [System.Text.Encoding]::UTF8)
+    if ([string]::IsNullOrWhiteSpace($content)) {
+        throw "Vault file contains only whitespace. Refusing silent fallback."
+    }
+
+    $rawJson = $null
+    try {
+        $rawJson = $content | ConvertFrom-Json
+    } catch {
+        throw "Failed to parse vault file: invalid JSON format."
+    }
+    if ($rawJson -isnot [System.Management.Automation.PSCustomObject]) {
+        throw "Vault must be a JSON object."
+    }
+
+    if (-not $rawJson.PSObject.Properties["version"]) {
+        throw "Vault file missing required 'version' property."
+    }
+
+    if ($rawJson.version -isnot [int] -and $rawJson.version -isnot [long]) { throw "Invalid vault version type." }
+    $version = [int]$rawJson.version
+    if ($version -ne 1 -and $version -ne 2) {
+        throw "Unsupported vault schema version: $version."
+    }
+
+    if ($version -eq 2) {
+        Assert-VaultObjectSchema -Value $rawJson -Required @("version", "cipherText")
+        if ($rawJson.cipherText -isnot [string]) { throw "Invalid vault ciphertext type." }
+        $cipherBase64 = $rawJson.cipherText
+        if ([string]::IsNullOrWhiteSpace($cipherBase64)) {
+            throw "Vault v2 envelope missing or empty 'cipherText'."
+        }
+
+        $cipherBytes = $null
+        try {
+            $cipherBytes = [System.Convert]::FromBase64String($cipherBase64)
+        } catch {
+            throw "Invalid base64 encoding in vault cipherText."
+        }
+
+        $v2Entropy = Get-V2VaultEntropy -Synthetic:$Synthetic
+        $plainBytes = $null
+        try {
+            $plainBytes = [System.Security.Cryptography.ProtectedData]::Unprotect(
+                $cipherBytes,
+                $v2Entropy,
+                [System.Security.Cryptography.DataProtectionScope]::CurrentUser
+            )
+        } catch {
+            throw "Vault v2 decryption failed: cryptographic integrity check or entropy mismatch."
+        } finally {
+            [System.Array]::Clear($v2Entropy, 0, $v2Entropy.Length)
+        }
+
+        $innerData = $null
+        try {
+            $innerJson = [System.Text.Encoding]::UTF8.GetString($plainBytes)
+            $innerData = $innerJson | ConvertFrom-Json
+        } catch {
+            throw "Failed to parse decrypted vault JSON."
+        } finally {
+            [System.Array]::Clear($plainBytes, 0, $plainBytes.Length)
+        }
+
+        Assert-VaultObjectSchema -Value $innerData -Required @("version", "created", "records")
+        if ($innerData.version -isnot [int] -and $innerData.version -isnot [long]) { throw "Invalid inner version type." }
+        if ($innerData.created -isnot [string] -or $innerData.records -isnot [array]) { throw "Invalid vault payload types." }
+        if ($innerData.version -ne 2) {
+            throw "Decrypted vault schema version mismatch."
+        }
+        if ([string]::IsNullOrWhiteSpace($innerData.created)) {
+            throw "Decrypted vault missing 'created' timestamp."
+        }
+        if ($null -eq $innerData.records) {
+            throw "Decrypted vault missing 'records' array."
+        }
+
+        $recordsList = New-Object System.Collections.ArrayList
+        $seenIdentities = New-Object 'System.Collections.Generic.HashSet[string]'
+        foreach ($rec in $innerData.records) {
+            Assert-VaultObjectSchema -Value $rec -Required @("origin", "recordId", "secret", "createdAt", "updatedAt")
+            foreach ($name in @("origin", "recordId", "secret", "createdAt", "updatedAt")) {
+                if ($rec.$name -isnot [string]) { throw "Invalid vault record property type." }
+            }
+            if ([string]::IsNullOrWhiteSpace($rec.origin)) { throw "Vault record missing required 'origin'." }
+            if ([string]::IsNullOrWhiteSpace($rec.recordId)) { throw "Vault record missing required 'recordId'." }
+            if ($null -eq $rec.secret -or [string]$rec.secret -eq "") { throw "Vault record missing required 'secret'." }
+            if ([string]::IsNullOrWhiteSpace($rec.createdAt)) { throw "Vault record missing required 'createdAt'." }
+            if ([string]::IsNullOrWhiteSpace($rec.updatedAt)) { throw "Vault record missing required 'updatedAt'." }
+            $canonOrigin = Get-CanonicalOrigin -OriginInput $rec.origin -Synthetic:$Synthetic
+            $key = "$canonOrigin|$($rec.recordId)"
+            if ($seenIdentities.Contains($key)) {
+                throw "Duplicate identity detected for origin '$canonOrigin' and recordId '$($rec.recordId)'."
+            }
+            [void]$seenIdentities.Add($key)
+            $recordsList.Add([PSCustomObject]@{
+                origin    = $canonOrigin
+                recordId  = [string]$rec.recordId
+                secret    = [string]$rec.secret
+                createdAt = [string]$rec.createdAt
+                updatedAt = [string]$rec.updatedAt
+            }) | Out-Null
+        }
+
         return @{
-            version = if ($data.version) { $data.version } else { 1 }
-            created = if ($data.created) { $data.created } else { [System.DateTime]::UtcNow.ToString("o") }
+            version = 2
+            created = [string]$innerData.created
             records = $recordsList
         }
-    } catch {
-        throw "Failed to read vault file: format corrupted or unreadable."
     }
+
+    # Version 1 Legacy Migration: strictly validate and decrypt all per-origin records
+    Assert-VaultObjectSchema -Value $rawJson -Required @("version", "records") -Optional @("created")
+    if ($rawJson.records -isnot [array]) { throw "Invalid legacy record collection." }
+    if ($rawJson.PSObject.Properties["created"] -and
+        ($rawJson.created -isnot [string] -or [string]::IsNullOrWhiteSpace($rawJson.created))) { throw "Invalid legacy creation timestamp." }
+    if ($null -eq $rawJson.records) {
+        throw "Vault v1 missing required 'records' array."
+    }
+
+    $seenIdentities = New-Object 'System.Collections.Generic.HashSet[string]'
+    $decryptedRecords = New-Object System.Collections.ArrayList
+
+    foreach ($r in $rawJson.records) {
+        Assert-VaultObjectSchema -Value $r -Required @("origin", "recordId", "cipherText", "createdAt", "updatedAt")
+        foreach ($name in @("origin", "recordId", "cipherText", "createdAt", "updatedAt")) {
+            if ($r.$name -isnot [string]) { throw "Invalid legacy record property type." }
+        }
+        if ([string]::IsNullOrWhiteSpace($r.origin)) { throw "V1 record missing required 'origin'." }
+        if ([string]::IsNullOrWhiteSpace($r.recordId)) { throw "V1 record missing required 'recordId'." }
+        if ([string]::IsNullOrWhiteSpace($r.cipherText)) { throw "V1 record missing required 'cipherText'." }
+        if ([string]::IsNullOrWhiteSpace($r.createdAt)) { throw "V1 record missing required 'createdAt'." }
+        if ([string]::IsNullOrWhiteSpace($r.updatedAt)) { throw "V1 record missing required 'updatedAt'." }
+
+        $canonOrigin = Get-CanonicalOrigin -OriginInput $r.origin -Synthetic:$Synthetic
+        $key = "$canonOrigin|$($r.recordId)"
+        if ($seenIdentities.Contains($key)) {
+            throw "Duplicate identity detected in v1 vault for origin '$canonOrigin' and recordId '$($r.recordId)'."
+        }
+        [void]$seenIdentities.Add($key)
+
+        $cipherBytes = $null
+        try {
+            $cipherBytes = [System.Convert]::FromBase64String($r.cipherText)
+        } catch {
+            throw "Invalid base64 encoding in v1 record cipherText."
+        }
+
+        $entropy = Get-V1OriginEntropy -CanonicalOrigin $canonOrigin -Synthetic:$Synthetic
+        $plainBytes = $null
+        try {
+            $plainBytes = [System.Security.Cryptography.ProtectedData]::Unprotect(
+                $cipherBytes,
+                $entropy,
+                [System.Security.Cryptography.DataProtectionScope]::CurrentUser
+            )
+        } catch {
+            throw "V1 record decryption failed for origin '$canonOrigin': cryptographic integrity check or origin entropy mismatch."
+        } finally {
+            [System.Array]::Clear($entropy, 0, $entropy.Length)
+        }
+
+        $payload = $null
+        try {
+            $payloadJson = [System.Text.Encoding]::UTF8.GetString($plainBytes)
+            $payload = $payloadJson | ConvertFrom-Json
+        } catch {
+            throw "Failed to parse decrypted v1 record payload JSON."
+        } finally {
+            [System.Array]::Clear($plainBytes, 0, $plainBytes.Length)
+        }
+
+        Assert-VaultObjectSchema -Value $payload -Required @("origin", "recordId", "secret") -Optional @("savedAt")
+        foreach ($name in @("origin", "recordId", "secret")) {
+            if ($payload.$name -isnot [string]) { throw "Invalid legacy payload property type." }
+        }
+        if ($payload.origin -cne $canonOrigin) {
+            throw "V1 record origin mismatch between metadata and decrypted payload."
+        }
+        if ($payload.recordId -cne $r.recordId) {
+            throw "V1 record recordId mismatch between metadata and decrypted payload."
+        }
+        if ($null -eq $payload.secret -or [string]$payload.secret -eq "") {
+            throw "V1 record secret missing in decrypted payload."
+        }
+
+        $decryptedRecords.Add([PSCustomObject]@{
+            origin    = $canonOrigin
+            recordId  = [string]$r.recordId
+            secret    = [string]$payload.secret
+            createdAt = [string]$r.createdAt
+            updatedAt = [string]$r.updatedAt
+        }) | Out-Null
+    }
+
+    $v2Created = if ($rawJson.PSObject.Properties["created"] -and -not [string]::IsNullOrWhiteSpace($rawJson.created)) {
+        [string]$rawJson.created
+    } else {
+        [System.DateTime]::UtcNow.ToString("o")
+    }
+
+    $v2Data = @{
+        version = 2
+        created = $v2Created
+        records = $decryptedRecords
+    }
+
+    # Atomically replace v1 vault with fully encrypted v2 envelope
+    Save-VaultData -FilePath $FilePath -VaultData $v2Data -Synthetic:$Synthetic
+    return $v2Data
 }
 
 function Set-VaultRecord {
@@ -291,9 +685,10 @@ function Set-VaultRecord {
         [string]$Origin,
         [string]$RecordId,
         [string]$Secret,
-        [string]$CustomVaultPath
+        [string]$CustomVaultPath,
+        [switch]$Synthetic
     )
-    $canonicalOrigin = Get-CanonicalOrigin $Origin
+    $canonicalOrigin = Get-CanonicalOrigin -OriginInput $Origin -Synthetic:$Synthetic
     if ([string]::IsNullOrWhiteSpace($RecordId)) {
         throw "RecordId cannot be null or empty."
     }
@@ -301,91 +696,63 @@ function Set-VaultRecord {
         throw "Secret cannot be empty."
     }
 
-    $secretBytes = [System.Text.Encoding]::UTF8.GetBytes($Secret)
-    try {
-        $now = [System.DateTime]::UtcNow.ToString("o")
-        $payloadObj = @{
-            origin   = $canonicalOrigin
-            recordId = $RecordId
-            secret   = $Secret
-            savedAt  = $now
-        }
-        $payloadJson = $payloadObj | ConvertTo-Json -Compress
-        $payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($payloadJson)
+    $vaultFilePath = Resolve-VaultFilePath -PathInput $CustomVaultPath -Synthetic:$Synthetic
+    $vaultData = Load-VaultData -FilePath $vaultFilePath -AllowMissing -Synthetic:$Synthetic
 
-        $entropy = Get-OriginEntropy $canonicalOrigin
-        $cipherBytes = [System.Security.Cryptography.ProtectedData]::Protect(
-            $payloadBytes,
-            $entropy,
-            [System.Security.Cryptography.DataProtectionScope]::CurrentUser
-        )
-        $cipherBase64 = [System.Convert]::ToBase64String($cipherBytes)
-
-        [System.Array]::Clear($secretBytes, 0, $secretBytes.Length)
-        [System.Array]::Clear($payloadBytes, 0, $payloadBytes.Length)
-
-        $vaultFilePath = Resolve-VaultFilePath -PathInput $CustomVaultPath
-        $vaultData = Load-VaultData -FilePath $vaultFilePath
-
-        $existingIndex = -1
-        for ($i = 0; $i -lt $vaultData.records.Count; $i++) {
-            $r = $vaultData.records[$i]
-            if ($r.origin -eq $canonicalOrigin -and $r.recordId -eq $RecordId) {
-                $existingIndex = $i
-                break
-            }
-        }
-
-        $createdAt = $now
-        if ($existingIndex -ge 0) {
-            $createdAt = $vaultData.records[$existingIndex].createdAt
-        }
-
-        $recordItem = [PSCustomObject]@{
-            origin     = $canonicalOrigin
-            recordId   = $RecordId
-            cipherText = $cipherBase64
-            createdAt  = $createdAt
-            updatedAt  = $now
-        }
-
-        if ($existingIndex -ge 0) {
-            $vaultData.records[$existingIndex] = $recordItem
-        } else {
-            $vaultData.records.Add($recordItem) | Out-Null
-        }
-
-        $outObj = [PSCustomObject]@{
-            version = $vaultData.version
-            created = $vaultData.created
-            records = @($vaultData.records)
-        }
-        Save-VaultFileAtomic -FilePath $vaultFilePath -JsonContent ($outObj | ConvertTo-Json -Depth 10)
-        return $canonicalOrigin
-    } finally {
-        if ($secretBytes) {
-            [System.Array]::Clear($secretBytes, 0, $secretBytes.Length)
+    $now = [System.DateTime]::UtcNow.ToString("o")
+    $existingIndex = -1
+    for ($i = 0; $i -lt $vaultData.records.Count; $i++) {
+        $r = $vaultData.records[$i]
+        if ($r.origin -ceq $canonicalOrigin -and $r.recordId -ceq $RecordId) {
+            $existingIndex = $i
+            break
         }
     }
+
+    $createdAt = $now
+    if ($existingIndex -ge 0) {
+        $createdAt = $vaultData.records[$existingIndex].createdAt
+    }
+
+    $recordItem = [PSCustomObject]@{
+        origin    = $canonicalOrigin
+        recordId  = $RecordId
+        secret    = $Secret
+        createdAt = $createdAt
+        updatedAt = $now
+    }
+
+    if ($existingIndex -ge 0) {
+        $vaultData.records[$existingIndex] = $recordItem
+    } else {
+        $vaultData.records.Add($recordItem) | Out-Null
+    }
+
+    Save-VaultData -FilePath $vaultFilePath -VaultData $vaultData -Synthetic:$Synthetic
+    return $canonicalOrigin
 }
 
 function Get-VaultRecord {
     param (
         [string]$Origin,
         [string]$RecordId,
-        [string]$CustomVaultPath
+        [string]$CustomVaultPath,
+        [switch]$Synthetic
     )
-    $canonicalOrigin = Get-CanonicalOrigin $Origin
+    $canonicalOrigin = Get-CanonicalOrigin -OriginInput $Origin -Synthetic:$Synthetic
     if ([string]::IsNullOrWhiteSpace($RecordId)) {
         throw "RecordId cannot be null or empty."
     }
 
-    $vaultFilePath = Resolve-VaultFilePath -PathInput $CustomVaultPath
-    $vaultData = Load-VaultData -FilePath $vaultFilePath
+    $vaultFilePath = Resolve-VaultFilePath -PathInput $CustomVaultPath -Synthetic:$Synthetic
+    $vaultData = Load-VaultData -FilePath $vaultFilePath -Synthetic:$Synthetic
+    if ($null -eq $vaultData) {
+        throw "Record not found for requested origin and recordId."
+    }
 
     $matched = $null
     foreach ($r in $vaultData.records) {
-        if ($r.origin -eq $canonicalOrigin -and $r.recordId -eq $RecordId) {
+        if ($r.origin -ceq $canonicalOrigin -and $r.recordId -ceq $RecordId) {
             $matched = $r
             break
         }
@@ -395,57 +762,42 @@ function Get-VaultRecord {
         throw "Record not found for requested origin and recordId."
     }
 
-    $cipherBytes = [System.Convert]::FromBase64String($matched.cipherText)
-    $entropy = Get-OriginEntropy $canonicalOrigin
-    $plainBytes = $null
-    try {
-        $plainBytes = [System.Security.Cryptography.ProtectedData]::Unprotect(
-            $cipherBytes,
-            $entropy,
-            [System.Security.Cryptography.DataProtectionScope]::CurrentUser
-        )
-    } catch {
-        throw "Decryption failed: cryptographic integrity check or origin entropy mismatch."
+    # Exact match verification on inner authenticated payload
+    if ($matched.origin -cne $canonicalOrigin -or $matched.recordId -cne $RecordId) {
+        throw "Integrity error: decrypted record does not match requested entry."
     }
 
-    try {
-        $json = [System.Text.Encoding]::UTF8.GetString($plainBytes)
-        $payload = $json | ConvertFrom-Json
-        if ($payload.origin -ne $canonicalOrigin -or $payload.recordId -ne $RecordId) {
-            throw "Integrity error: decrypted record does not match requested entry."
-        }
-        return $payload.secret
-    } finally {
-        if ($plainBytes) {
-            [System.Array]::Clear($plainBytes, 0, $plainBytes.Length)
-        }
-    }
+    return $matched.secret
 }
 
 function Get-VaultList {
     param (
         [string]$Origin,
-        [string]$CustomVaultPath
+        [string]$CustomVaultPath,
+        [switch]$Synthetic
     )
-    $vaultFilePath = Resolve-VaultFilePath -PathInput $CustomVaultPath
-    $vaultData = Load-VaultData -FilePath $vaultFilePath
+    $vaultFilePath = Resolve-VaultFilePath -PathInput $CustomVaultPath -Synthetic:$Synthetic
+    $vaultData = Load-VaultData -FilePath $vaultFilePath -Synthetic:$Synthetic
+    if ($null -eq $vaultData) {
+        return @()
+    }
 
     $filterOrigin = $null
     if (-not [string]::IsNullOrWhiteSpace($Origin)) {
-        $filterOrigin = Get-CanonicalOrigin $Origin
+        $filterOrigin = Get-CanonicalOrigin -OriginInput $Origin -Synthetic:$Synthetic
     }
 
-    $entries = @()
+    $entries = New-Object System.Collections.ArrayList
     foreach ($r in $vaultData.records) {
         if ($filterOrigin -and $r.origin -ne $filterOrigin) {
             continue
         }
-        $entries += @{
+        $entries.Add([ordered]@{
             origin    = $r.origin
             recordId  = $r.recordId
             createdAt = $r.createdAt
             updatedAt = $r.updatedAt
-        }
+        }) | Out-Null
     }
     return $entries
 }
@@ -483,9 +835,63 @@ function ConvertTo-PlainString {
     }
 }
 
-function Assert-WindowsHelloRequirement {
-    # Availability is not authentication. Never treat a configured device as consent.
-    throw "Windows Hello authentication is not implemented. Credential use requiring Hello is denied."
+# ==============================================================================
+# Authentication & Mutex Helpers
+# ==============================================================================
+
+function Invoke-WindowsHelloAuth {
+    param ([string]$Message)
+    if ([string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+        throw "VAULT_AUTHENTICATION_REQUIRED"
+    }
+    $helloScript = Join-Path $PSScriptRoot "hello.ps1"
+    if (-not (Test-Path $helloScript)) {
+        throw "VAULT_AUTHENTICATION_REQUIRED"
+    }
+
+    try {
+        . $helloScript
+    } catch {
+        throw "VAULT_AUTHENTICATION_REQUIRED"
+    }
+
+    if (-not (Get-Command -Name "Confirm-WindowsHello" -ErrorAction SilentlyContinue)) {
+        throw "VAULT_AUTHENTICATION_REQUIRED"
+    }
+
+    $verified = $false
+    try {
+        $verified = Confirm-WindowsHello -Message $Message -TimeoutSeconds 60
+    } catch {
+        throw "VAULT_AUTHENTICATION_REQUIRED"
+    }
+
+    if ($verified -ne $true) {
+        throw "VAULT_AUTHENTICATION_REQUIRED"
+    }
+}
+
+function Invoke-WithVaultMutex {
+    param ([scriptblock]$Action)
+    $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $mutex = New-Object System.Threading.Mutex($false, "Global\AutoMateVault-$sid")
+    $held = $false
+    try {
+        try {
+            $held = $mutex.WaitOne(30000)
+        } catch [System.Threading.AbandonedMutexException] {
+            $held = $true
+        }
+        if (-not $held) {
+            throw "Vault is busy."
+        }
+        & $Action
+    } finally {
+        if ($held) {
+            try { $mutex.ReleaseMutex() } catch {}
+        }
+        $mutex.Dispose()
+    }
 }
 
 # ==============================================================================
@@ -496,11 +902,17 @@ function Invoke-Store {
     param (
         [string]$TargetOrigin,
         [string]$TargetRecordId,
-        [switch]$RequireHelloCheck,
-        [string]$CustomVaultPath
+        [string]$CustomVaultPath,
+        [switch]$Synthetic
     )
-    if ($RequireHelloCheck) { Assert-WindowsHelloRequirement }
-    $canonicalOrigin = Get-CanonicalOrigin $TargetOrigin
+    $canonicalOrigin = Get-CanonicalOrigin -OriginInput $TargetOrigin -Synthetic:$Synthetic
+    if ([string]::IsNullOrWhiteSpace($TargetRecordId)) {
+        throw "RecordId cannot be null or empty."
+    }
+
+    if (-not $Synthetic) {
+        Invoke-WindowsHelloAuth -Message "Auto-Mate: Store secret for $canonicalOrigin"
+    }
 
     $rawSecret = ""
     if ([System.Console]::IsInputRedirected) {
@@ -524,7 +936,9 @@ function Invoke-Store {
         $rawSecret = ConvertTo-PlainString $sec1
     }
 
-    [void](Set-VaultRecord -Origin $canonicalOrigin -RecordId $TargetRecordId -Secret $rawSecret -CustomVaultPath $CustomVaultPath)
+    Invoke-WithVaultMutex {
+        [void](Set-VaultRecord -Origin $canonicalOrigin -RecordId $TargetRecordId -Secret $rawSecret -CustomVaultPath $CustomVaultPath -Synthetic:$Synthetic)
+    }
     Write-Host "Secret securely stored and DPAPI-encrypted." -ForegroundColor Green
     Write-Host "Origin    : $canonicalOrigin"
     Write-Host "Record ID : $TargetRecordId"
@@ -535,13 +949,22 @@ function Invoke-Generate {
         [string]$TargetOrigin,
         [string]$TargetRecordId,
         [int]$PasswordLength,
-        [switch]$RequireHelloCheck,
-        [string]$CustomVaultPath
+        [string]$CustomVaultPath,
+        [switch]$Synthetic
     )
-    if ($RequireHelloCheck) { Assert-WindowsHelloRequirement }
-    $canonicalOrigin = Get-CanonicalOrigin $TargetOrigin
+    $canonicalOrigin = Get-CanonicalOrigin -OriginInput $TargetOrigin -Synthetic:$Synthetic
+    if ([string]::IsNullOrWhiteSpace($TargetRecordId)) {
+        throw "RecordId cannot be null or empty."
+    }
+
+    if (-not $Synthetic) {
+        Invoke-WindowsHelloAuth -Message "Auto-Mate: Generate password for $canonicalOrigin"
+    }
+
     $genSecret = Generate-SecurePassword -Length $PasswordLength
-    [void](Set-VaultRecord -Origin $canonicalOrigin -RecordId $TargetRecordId -Secret $genSecret -CustomVaultPath $CustomVaultPath)
+    Invoke-WithVaultMutex {
+        [void](Set-VaultRecord -Origin $canonicalOrigin -RecordId $TargetRecordId -Secret $genSecret -CustomVaultPath $CustomVaultPath -Synthetic:$Synthetic)
+    }
 
     Write-Host "High-entropy password generated and DPAPI-encrypted." -ForegroundColor Green
     Write-Host "Origin    : $canonicalOrigin"
@@ -553,9 +976,27 @@ function Invoke-Generate {
 function Invoke-List {
     param (
         [string]$TargetOrigin,
-        [string]$CustomVaultPath
+        [string]$CustomVaultPath,
+        [switch]$Synthetic
     )
-    $entries = Get-VaultList -Origin $TargetOrigin -CustomVaultPath $CustomVaultPath
+    $canonicalOrigin = $null
+    if (-not [string]::IsNullOrWhiteSpace($TargetOrigin)) {
+        $canonicalOrigin = Get-CanonicalOrigin -OriginInput $TargetOrigin -Synthetic:$Synthetic
+    }
+
+    if (-not $Synthetic) {
+        $msg = if ($canonicalOrigin) {
+            "Auto-Mate: List vault entries for $canonicalOrigin"
+        } else {
+            "Auto-Mate: List vault entries"
+        }
+        Invoke-WindowsHelloAuth -Message $msg
+    }
+
+    $entries = @(Invoke-WithVaultMutex {
+        Get-VaultList -Origin $canonicalOrigin -CustomVaultPath $CustomVaultPath -Synthetic:$Synthetic
+    })
+
     if ($entries.Count -eq 0) {
         Write-Host "No vault records found matching query." -ForegroundColor Yellow
     } else {
@@ -576,11 +1017,17 @@ function Invoke-Reveal {
     param (
         [string]$TargetOrigin,
         [string]$TargetRecordId,
-        [switch]$RequireHelloCheck,
-        [string]$CustomVaultPath
+        [string]$CustomVaultPath,
+        [switch]$Synthetic
     )
-    if ($RequireHelloCheck) { Assert-WindowsHelloRequirement }
-    $canonicalOrigin = Get-CanonicalOrigin $TargetOrigin
+    $canonicalOrigin = Get-CanonicalOrigin -OriginInput $TargetOrigin -Synthetic:$Synthetic
+    if ([string]::IsNullOrWhiteSpace($TargetRecordId)) {
+        throw "RecordId cannot be null or empty."
+    }
+
+    if (-not $Synthetic) {
+        Invoke-WindowsHelloAuth -Message "Auto-Mate: Reveal secret for $canonicalOrigin"
+    }
 
     Write-Host "==========================================================" -ForegroundColor Red
     Write-Host "SECURITY WARNING: Explicit Owner Reveal Confirmation" -ForegroundColor Red
@@ -594,7 +1041,9 @@ function Invoke-Reveal {
         return
     }
 
-    $secret = Get-VaultRecord -Origin $canonicalOrigin -RecordId $TargetRecordId -CustomVaultPath $CustomVaultPath
+    $secret = Invoke-WithVaultMutex {
+        Get-VaultRecord -Origin $canonicalOrigin -RecordId $TargetRecordId -CustomVaultPath $CustomVaultPath -Synthetic:$Synthetic
+    }
     Write-Host "`nSecret for [$TargetRecordId] at [$canonicalOrigin]:" -ForegroundColor Green
     Write-Host $secret -ForegroundColor White
     Write-Host "`nNotice: Clear console when finished.`n" -ForegroundColor DarkGray
@@ -605,99 +1054,146 @@ function Invoke-Reveal {
 # ==============================================================================
 
 function Invoke-Broker {
-    param ([string]$CustomVaultPath)
+    param (
+        [string]$CustomVaultPath,
+        [switch]$Synthetic
+    )
+    $stdinText = [System.Console]::In.ReadToEnd()
+    if ([string]::IsNullOrWhiteSpace($stdinText)) {
+        throw "Broker request payload is empty."
+    }
+
+    $req = $null
     try {
-        $stdinText = [System.Console]::In.ReadToEnd()
-        if ([string]::IsNullOrWhiteSpace($stdinText)) {
-            throw "Broker request payload is empty."
-        }
-
         $req = $stdinText | ConvertFrom-Json
-        $action = $req.action
-
-        switch ($action) {
-            "persist-generated" {
-                if ([string]::IsNullOrWhiteSpace($req.origin)) { throw "Missing 'origin' parameter in broker request." }
-                if ([string]::IsNullOrWhiteSpace($req.recordId)) { throw "Missing 'recordId' parameter in broker request." }
-
-                $pwdLength = 24
-                if ($req.PSObject.Properties["length"] -and [int]$req.length -ge 12) {
-                    $pwdLength = [int]$req.length
-                }
-
-                $secret = Generate-SecurePassword -Length $pwdLength
-                $canonicalOrigin = Set-VaultRecord -Origin $req.origin -RecordId $req.recordId -Secret $secret -CustomVaultPath $CustomVaultPath
-
-                $res = @{
-                    success         = $true
-                    action          = "persist-generated"
-                    origin          = $canonicalOrigin
-                    recordId        = [string]$req.recordId
-                    generatedSecret = $secret
-                }
-                [System.Console]::Out.WriteLine(($res | ConvertTo-Json -Compress))
-                exit 0
-            }
-
-            "store-secret" {
-                if ([string]::IsNullOrWhiteSpace($req.origin)) { throw "Missing 'origin' parameter in broker request." }
-                if ([string]::IsNullOrWhiteSpace($req.recordId)) { throw "Missing 'recordId' parameter in broker request." }
-                if ($null -eq $req.secret -or [string]$req.secret -eq "") { throw "Missing 'secret' parameter in broker request." }
-
-                $canonicalOrigin = Set-VaultRecord -Origin $req.origin -RecordId $req.recordId -Secret ([string]$req.secret) -CustomVaultPath $CustomVaultPath
-
-                $res = @{
-                    success  = $true
-                    action   = "store-secret"
-                    origin   = $canonicalOrigin
-                    recordId = [string]$req.recordId
-                }
-                [System.Console]::Out.WriteLine(($res | ConvertTo-Json -Compress))
-                exit 0
-            }
-
-            "retrieve-fill" {
-                if ([string]::IsNullOrWhiteSpace($req.origin)) { throw "Missing 'origin' parameter in broker request." }
-                if ([string]::IsNullOrWhiteSpace($req.recordId)) { throw "Missing 'recordId' parameter in broker request." }
-
-                $secret = Get-VaultRecord -Origin $req.origin -RecordId $req.recordId -CustomVaultPath $CustomVaultPath
-                $canonicalOrigin = Get-CanonicalOrigin $req.origin
-
-                $res = @{
-                    success  = $true
-                    action   = "retrieve-fill"
-                    origin   = $canonicalOrigin
-                    recordId = [string]$req.recordId
-                    secret   = $secret
-                }
-                [System.Console]::Out.WriteLine(($res | ConvertTo-Json -Compress))
-                exit 0
-            }
-
-            "list" {
-                $filterOrigin = if ($req.PSObject.Properties["origin"]) { [string]$req.origin } else { $null }
-                $entries = @(Get-VaultList -Origin $filterOrigin -CustomVaultPath $CustomVaultPath)
-                $res = @{
-                    success = $true
-                    action  = "list"
-                    entries = $entries
-                }
-                [System.Console]::Out.WriteLine(($res | ConvertTo-Json -Compress))
-                exit 0
-            }
-
-            default {
-                throw "Unknown broker action '$action'."
-            }
-        }
     } catch {
-        $cleanError = "VAULT_REQUEST_DENIED"
-        $errRes = @{
-            success = $false
-            error   = $cleanError
+        throw "Broker request is not valid JSON."
+    }
+
+    if ($null -eq $req -or -not $req.PSObject.Properties["action"]) {
+        throw "Missing 'action' parameter in broker request."
+    }
+
+    $action = [string]$req.action
+    $authMode = if ($Synthetic) { "synthetic-isolated" } else { "windows-hello" }
+
+    switch ($action) {
+        "persist-generated" {
+            if ([string]::IsNullOrWhiteSpace($req.origin)) { throw "Missing 'origin' parameter in broker request." }
+            if ([string]::IsNullOrWhiteSpace($req.recordId)) { throw "Missing 'recordId' parameter in broker request." }
+
+            $canonicalOrigin = Get-CanonicalOrigin -OriginInput $req.origin -Synthetic:$Synthetic
+
+            if (-not $Synthetic) {
+                Invoke-WindowsHelloAuth -Message "Auto-Mate Broker: Generate password for $canonicalOrigin"
+            }
+
+            $pwdLength = 24
+            if ($req.PSObject.Properties["length"] -and [int]$req.length -ge 12) {
+                $pwdLength = [int]$req.length
+            }
+
+            $secret = Generate-SecurePassword -Length $pwdLength
+            Invoke-WithVaultMutex {
+                [void](Set-VaultRecord -Origin $canonicalOrigin -RecordId $req.recordId -Secret $secret -CustomVaultPath $CustomVaultPath -Synthetic:$Synthetic)
+            }
+
+            $res = [ordered]@{
+                success         = $true
+                authentication  = $authMode
+                action          = "persist-generated"
+                origin          = $canonicalOrigin
+                recordId        = [string]$req.recordId
+                generatedSecret = $secret
+            }
+            [System.Console]::Out.WriteLine(($res | ConvertTo-Json -Compress))
+            return
         }
-        [System.Console]::Out.WriteLine(($errRes | ConvertTo-Json -Compress))
-        exit 1
+
+        "store-secret" {
+            if ([string]::IsNullOrWhiteSpace($req.origin)) { throw "Missing 'origin' parameter in broker request." }
+            if ([string]::IsNullOrWhiteSpace($req.recordId)) { throw "Missing 'recordId' parameter in broker request." }
+            if ($null -eq $req.secret -or [string]$req.secret -eq "") { throw "Missing 'secret' parameter in broker request." }
+
+            $canonicalOrigin = Get-CanonicalOrigin -OriginInput $req.origin -Synthetic:$Synthetic
+
+            if (-not $Synthetic) {
+                Invoke-WindowsHelloAuth -Message "Auto-Mate Broker: Store secret for $canonicalOrigin"
+            }
+
+            Invoke-WithVaultMutex {
+                [void](Set-VaultRecord -Origin $canonicalOrigin -RecordId $req.recordId -Secret ([string]$req.secret) -CustomVaultPath $CustomVaultPath -Synthetic:$Synthetic)
+            }
+
+            $res = [ordered]@{
+                success        = $true
+                authentication = $authMode
+                action         = "store-secret"
+                origin         = $canonicalOrigin
+                recordId       = [string]$req.recordId
+            }
+            [System.Console]::Out.WriteLine(($res | ConvertTo-Json -Compress))
+            return
+        }
+
+        "retrieve-fill" {
+            if ([string]::IsNullOrWhiteSpace($req.origin)) { throw "Missing 'origin' parameter in broker request." }
+            if ([string]::IsNullOrWhiteSpace($req.recordId)) { throw "Missing 'recordId' parameter in broker request." }
+
+            $canonicalOrigin = Get-CanonicalOrigin -OriginInput $req.origin -Synthetic:$Synthetic
+
+            if (-not $Synthetic) {
+                Invoke-WindowsHelloAuth -Message "Auto-Mate Broker: Retrieve secret for $canonicalOrigin"
+            }
+
+            $secret = Invoke-WithVaultMutex {
+                Get-VaultRecord -Origin $canonicalOrigin -RecordId $req.recordId -CustomVaultPath $CustomVaultPath -Synthetic:$Synthetic
+            }
+
+            $res = [ordered]@{
+                success        = $true
+                authentication = $authMode
+                action         = "retrieve-fill"
+                origin         = $canonicalOrigin
+                recordId       = [string]$req.recordId
+                secret         = $secret
+            }
+            [System.Console]::Out.WriteLine(($res | ConvertTo-Json -Compress))
+            return
+        }
+
+        "list" {
+            $filterOrigin = $null
+            if ($req.PSObject.Properties["origin"] -and -not [string]::IsNullOrWhiteSpace($req.origin)) {
+                $filterOrigin = Get-CanonicalOrigin -OriginInput $req.origin -Synthetic:$Synthetic
+            }
+
+            if (-not $Synthetic) {
+                $msg = if ($filterOrigin) {
+                    "Auto-Mate Broker: List entries for $filterOrigin"
+                } else {
+                    "Auto-Mate Broker: List vault entries"
+                }
+                Invoke-WindowsHelloAuth -Message $msg
+            }
+
+            $entries = @(Invoke-WithVaultMutex {
+                Get-VaultList -Origin $filterOrigin -CustomVaultPath $CustomVaultPath -Synthetic:$Synthetic
+            })
+
+            $res = [ordered]@{
+                success        = $true
+                authentication = $authMode
+                action         = "list"
+                entries        = $entries
+            }
+            [System.Console]::Out.WriteLine(($res | ConvertTo-Json -Compress))
+            return
+        }
+
+        default {
+            throw "Unknown broker action '$action'."
+        }
     }
 }
 
@@ -705,16 +1201,24 @@ function Show-Usage {
     Write-Host @"
 Auto-Mate Windows Native Vault CLI
 Usage:
-  -Store    -Origin <https://url> -RecordId <id> [-RequireHello] [-VaultPath <path>]
+  -Store    -Origin <https://url> -RecordId <id> [-VaultPath <path>] [-Synthetic]
             Interactively prompts for secret (SecureString) and stores encrypted.
-  -Generate -Origin <https://url> -RecordId <id> [-Length <n>] [-RequireHello] [-VaultPath <path>]
+  -Generate -Origin <https://url> -RecordId <id> [-Length <n>] [-VaultPath <path>] [-Synthetic]
             Generates high-entropy CSPRNG password and persists directly without console display.
-  -List     [-Origin <https://url>] [-VaultPath <path>]
+  -List     [-Origin <https://url>] [-VaultPath <path>] [-Synthetic]
             Lists stored entry metadata (origins, record IDs, timestamps).
-  -Reveal   -Origin <https://url> -RecordId <id> [-RequireHello] [-VaultPath <path>]
+  -Reveal   -Origin <https://url> -RecordId <id> [-VaultPath <path>] [-Synthetic]
             Requires explicit typed confirmation ('YES') before decrypting secret to terminal.
-  -Broker   [-VaultPath <path>]
+  -Broker   [-VaultPath <path>] [-Synthetic]
             Runs trusted machine IPC protocol over stdin/stdout JSON.
+  -CheckAvailability
+            Diagnostic: returns Windows Hello hardware availability status without touching vault.
+
+Security:
+  - Windows Hello biometric/PIN authentication is mandatory for all normal operations.
+  - Synthetic mode (-Synthetic) is restricted to automated tests: requires an explicit
+    -VaultPath under Temp/AutoMate-Synthetic/<child>/ and .test origins. Synthetic mode
+    uses isolated DPAPI entropy namespaces and cannot read or write production vaults.
 "@ -ForegroundColor Yellow
 }
 
@@ -722,47 +1226,63 @@ Usage:
 # Main Dispatcher
 # ==============================================================================
 
-$vaultMutex = $null
-$vaultMutexHeld = $false
+$exitCode = 0
 try {
-    if ($Broker -or $Store -or $Generate -or $List -or $Reveal) {
-        $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-        $vaultMutex = New-Object System.Threading.Mutex($false, "Global\AutoMateVault-$sid")
-        try {
-            $vaultMutexHeld = $vaultMutex.WaitOne(30000)
-        } catch [System.Threading.AbandonedMutexException] {
-            $vaultMutexHeld = $true
-        }
-        if (-not $vaultMutexHeld) { throw "Vault is busy." }
+    if ($Synthetic) {
+        Assert-SyntheticVaultPath -PathInput $VaultPath
     }
+
     if ($Broker) {
-        if ($RequireHello) { Assert-WindowsHelloRequirement }
-        Invoke-Broker -CustomVaultPath $VaultPath
+        Invoke-Broker -CustomVaultPath $VaultPath -Synthetic:$Synthetic
     } elseif ($Store) {
-        Invoke-Store -TargetOrigin $Origin -TargetRecordId $RecordId -RequireHelloCheck:$RequireHello -CustomVaultPath $VaultPath
+        Invoke-Store -TargetOrigin $Origin -TargetRecordId $RecordId -CustomVaultPath $VaultPath -Synthetic:$Synthetic
     } elseif ($Generate) {
-        Invoke-Generate -TargetOrigin $Origin -TargetRecordId $RecordId -PasswordLength $Length -RequireHelloCheck:$RequireHello -CustomVaultPath $VaultPath
+        Invoke-Generate -TargetOrigin $Origin -TargetRecordId $RecordId -PasswordLength $Length -CustomVaultPath $VaultPath -Synthetic:$Synthetic
     } elseif ($List) {
-        Invoke-List -TargetOrigin $Origin -CustomVaultPath $VaultPath
+        Invoke-List -TargetOrigin $Origin -CustomVaultPath $VaultPath -Synthetic:$Synthetic
     } elseif ($Reveal) {
-        Invoke-Reveal -TargetOrigin $Origin -TargetRecordId $RecordId -RequireHelloCheck:$RequireHello -CustomVaultPath $VaultPath
+        Invoke-Reveal -TargetOrigin $Origin -TargetRecordId $RecordId -CustomVaultPath $VaultPath -Synthetic:$Synthetic
+    } elseif ($CheckAvailability) {
+        $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+        if ([string]::IsNullOrWhiteSpace($scriptDir)) {
+            $scriptDir = $PSScriptRoot
+        }
+        if ([string]::IsNullOrWhiteSpace($scriptDir)) {
+            $scriptDir = "."
+        }
+        $helloScript = Join-Path $scriptDir "hello.ps1"
+        if (Test-Path $helloScript) {
+            . $helloScript
+            if (Get-Command -Name "Get-WindowsHelloAvailability" -ErrorAction SilentlyContinue) {
+                $avail = Get-WindowsHelloAvailability
+                Write-Host $avail
+            } else {
+                Write-Host "Unavailable"
+            }
+        } else {
+            Write-Host "Unavailable"
+        }
     } else {
         Show-Usage
     }
 } catch {
+    $exitCode = 1
+    $isAuthError = ($_.Exception.Message -eq "VAULT_AUTHENTICATION_REQUIRED" -or
+                    ($_.Exception.InnerException -and $_.Exception.InnerException.Message -eq "VAULT_AUTHENTICATION_REQUIRED"))
     if ($Broker) {
-        $errRes = @{
+        $errorCode = if ($isAuthError) { "VAULT_AUTHENTICATION_REQUIRED" } else { "VAULT_REQUEST_DENIED" }
+        $errRes = [ordered]@{
             success = $false
-            error   = "VAULT_REQUEST_DENIED"
+            error   = $errorCode
         }
         [System.Console]::Out.WriteLine(($errRes | ConvertTo-Json -Compress))
-        exit 1
     } else {
-        [System.Console]::Error.WriteLine("Error: vault operation denied.")
-        exit 1
+        if ($isAuthError) {
+            [System.Console]::Error.WriteLine("VAULT_AUTHENTICATION_REQUIRED")
+        } else {
+            [System.Console]::Error.WriteLine("VAULT_REQUEST_DENIED")
+        }
     }
-}
-finally {
-    if ($vaultMutexHeld) { $vaultMutex.ReleaseMutex() }
-    if ($vaultMutex) { $vaultMutex.Dispose() }
+} finally {
+    if ($exitCode -ne 0) { exit $exitCode }
 }

@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidateSet('assembleDebug', 'lintDebug')][string]$Task = 'assembleDebug')
+param([ValidateSet('assembleDebug', 'lintDebug', 'testDebugUnitTest')][string[]]$Task = @('assembleDebug'))
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $previousJava = $env:JAVA_HOME
@@ -23,7 +23,7 @@ try {
     }
     Push-Location (Join-Path $root 'platforms/android')
     try {
-        & .\gradlew.bat $Task --console=plain
+        & .\gradlew.bat @Task --console=plain
         if ($LASTEXITCODE -ne 0) { throw "Android build failed (exit $LASTEXITCODE)." }
     } finally { Pop-Location }
 } finally {
