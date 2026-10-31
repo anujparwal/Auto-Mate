@@ -1,4 +1,4 @@
-import type { Browser, Page } from 'playwright';
+import type { Browser, BrowserContext, Page } from 'playwright';
 import { PolicyBroker, PolicyError, httpsOrigin } from './policy';
 import type { FieldRequest, WorkflowObserver } from './preview-contract';
 import { verifyFieldRequests, fillVerifiedField } from './preview-capture';
@@ -56,11 +56,70 @@ export async function register(
     policy.authorize(grant, task, origin, 'fill', request.credential);
   };
 
-  // No persistent profile, downloads, tracing, video or model-visible page reference.
-  const context = await browser.newContext({ acceptDownloads: false, serviceWorkers: 'block' });
+  let signal: AbortSignal | undefined;
+  let onAbort: (() => void) | undefined;
+  let context: BrowserContext | undefined;
   let saved = false;
   let password: string | undefined;
+  let abortRequested = false;
+  let finished = false;
+  let closePromise: Promise<void> | undefined;
+  let publishStoppedPromise: Promise<void> | undefined;
+  let publishedTerminalState = false;
+  let closeFailed = false;
+  let status: WorkflowResult['status'] = 'takeover';
+
+  const triggerClose = (): Promise<void> => {
+    abortRequested = true;
+    if (context && !closePromise) {
+      closePromise = (async () => {
+        try {
+          await context!.close();
+        } catch {
+          closeFailed = true;
+        }
+      })();
+    }
+    return closePromise ?? Promise.resolve();
+  };
+
+  const publishStopped = (): Promise<void> => {
+    if (!publishStoppedPromise) {
+      publishedTerminalState = true;
+      publishStoppedPromise = (async () => {
+        if (observer) {
+          try {
+            await observer.state('stopped');
+          } catch {
+            /* safe ignore */
+          }
+        }
+      })();
+    }
+    return publishStoppedPromise;
+  };
+
   try {
+    signal = policy.executionSignal(grant, task);
+    onAbort = () => {
+      if (finished) return;
+      void triggerClose();
+      void publishStopped();
+    };
+
+    if (signal.aborted) {
+      onAbort();
+      throw new PolicyError('TASK_STOPPED');
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+
+    // No persistent profile, downloads, tracing, video or model-visible page reference.
+    context = await browser.newContext({ acceptDownloads: false, serviceWorkers: 'block' });
+    if (signal.aborted || abortRequested) {
+      await triggerClose();
+      throw new PolicyError('TASK_STOPPED');
+    }
+
     checkCategories();
     await context.route('**/*', route => {
       const request = route.request();
@@ -68,14 +127,20 @@ export async function register(
       try { allowed = new URL(request.url()).origin === origin; } catch { /* denied */ }
       return allowed ? route.continue() : route.abort('blockedbyclient');
     });
+
+    if (signal.aborted) throw new PolicyError('TASK_STOPPED');
     const page = await context.newPage();
     page.on('popup', popup => { void popup.close(); });
     if (prepare) await prepare(page); // Trusted integration fixture only; never an agent tool.
+
+    if (signal.aborted) throw new PolicyError('TASK_STOPPED');
     await page.goto(target.href, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
     checkCategories();
+    if (signal.aborted) throw new PolicyError('TASK_STOPPED');
     if (observer) await observer.requested(page, origin, requests);
 
+    if (signal.aborted) throw new PolicyError('TASK_STOPPED');
     const verifiedFields = await verifyFieldRequests(page, origin, requests);
     const emailField = verifiedFields.find(f => f.request.credential === 'registration-email');
     const passwordField = verifiedFields.find(f => f.request.credential === 'registration-password');
@@ -84,34 +149,45 @@ export async function register(
     }
 
     checkCategories();
+    if (signal.aborted) throw new PolicyError('TASK_STOPPED');
     if (observer) await observer.verified(page, origin, verifiedFields);
 
     // Enter protected mode BEFORE generating or inserting any sensitive data.
     authorizeFill(emailField.request);
     authorizeFill(passwordField.request);
+    if (signal.aborted) throw new PolicyError('TASK_STOPPED');
+
     const generated = await store.generateAndPersist(origin);
     password = generated.password;
     saved = true;
+
+    if (signal.aborted) throw new PolicyError('TASK_STOPPED');
     // Revalidate after asynchronous native persistence (grant may have expired/revoked).
     authorizeFill(passwordField.request);
 
     // Fill email
     if (observer) await observer.state('filling', emailField.request.id);
+    if (signal.aborted) throw new PolicyError('TASK_STOPPED');
     authorizeFill(emailField.request);
     await fillVerifiedField(page, origin, emailField, email);
+    if (signal.aborted) throw new PolicyError('TASK_STOPPED');
     if (observer) await observer.state('filled', emailField.request.id);
 
     // Fill password
+    if (signal.aborted) throw new PolicyError('TASK_STOPPED');
     if (observer) await observer.state('filling', passwordField.request.id);
     authorizeFill(passwordField.request);
     await fillVerifiedField(page, origin, passwordField, password);
     password = undefined;
+    if (signal.aborted) throw new PolicyError('TASK_STOPPED');
     if (observer) await observer.state('filled', passwordField.request.id);
 
     // Submission
+    if (signal.aborted) throw new PolicyError('TASK_STOPPED');
     if (observer) await observer.state('submitting');
     checkCategories();
     policy.authorize(grant, task, origin, 'submit');
+    if (signal.aborted) throw new PolicyError('TASK_STOPPED');
     await page.evaluate(({ expectedOrigin, selector }) => {
       if (location.origin !== expectedOrigin) throw new Error('DESTINATION_CHANGED');
       const button = document.querySelector(selector);
@@ -123,24 +199,47 @@ export async function register(
     }, { expectedOrigin: origin, selector: workflow.submitSelector });
     await page.locator(workflow.successSelector).waitFor({ state: 'visible', timeout: 10000 });
     if (new URL(page.url()).origin !== origin) throw new PolicyError('DESTINATION_CHANGED');
+
     policy.finish(task, 'completed');
+    finished = true;
     if (observer) await observer.state('completed');
-    return Object.freeze({ status: 'completed', credentialSaved: true });
+    publishedTerminalState = true;
+    status = 'completed';
   } catch {
     // No raw browser errors: they can contain page values and submitted data.
-    const isStopped = policy.state(task) === 'stopped';
+    const taskState = policy.state(task);
+    const isStopped = taskState === 'stopped' || signal?.aborted || abortRequested;
+    await triggerClose();
     if (observer) {
       try {
-        await observer.state(isStopped ? 'stopped' : 'takeover');
+        if (isStopped) {
+          await publishStopped();
+        } else if (!publishedTerminalState) {
+          publishedTerminalState = true;
+          await observer.state('takeover');
+        }
       } catch {
         /* safe ignore */
       }
     }
-    if (['normal', 'protected'].includes(policy.state(task))) policy.finish(task, 'takeover');
-    return Object.freeze({ status: 'takeover', credentialSaved: saved });
+    if (taskState === 'normal' || taskState === 'protected') {
+      try {
+        policy.finish(task, 'takeover');
+      } catch {
+        /* safe ignore */
+      }
+    }
   } finally {
     password = undefined; // JS strings cannot be reliably zeroized; documented limitation.
-    await context.close();
+    if (signal && onAbort) {
+      signal.removeEventListener('abort', onAbort);
+    }
+    await triggerClose();
   }
+  if (closeFailed && status === 'completed') {
+    status = 'takeover';
+    try { await observer?.state('takeover'); } catch { /* bounded owner channel failure */ }
+  }
+  return Object.freeze({ status, credentialSaved: saved });
 }
 

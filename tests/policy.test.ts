@@ -38,9 +38,17 @@ describe('authorization boundary', () => {
   test('rechecks expiry at execution, including exact deadline', () => {
     let now = 0;
     const broker = new PolicyBroker(defaultCatalog(), noopSink, () => now);
-    const grant = broker.approve(request());
-    now = 60000;
-    expect(() => broker.authorize(grant, 'signup', request().origin, 'fill', 'registration-email')).toThrow('GRANT_EXPIRED');
+    try {
+      const grant = broker.approve(request());
+      now = 60000;
+      expect(() => broker.authorize(grant, 'signup', request().origin, 'fill', 'registration-email')).toThrow('GRANT_EXPIRED');
+      expect(broker.state('signup')).toBe('stopped');
+      const last = broker.audit().at(-1);
+      expect(last?.event).toBe('grant_expired');
+      expect(last?.reason).toBe('GRANT_EXPIRED');
+    } finally {
+      broker.stopAll();
+    }
   });
 
   test('block and stop revoke existing authority', () => {
@@ -372,5 +380,293 @@ describe('authorization boundary', () => {
     expect(() => operation === 'revoke' ? broker.revoke(grant) : broker.stopAll()).toThrow('AUDIT_UNAVAILABLE');
     expect(broker.state('signup')).toBe('stopped');
     expect(() => broker.authorize(grant, 'signup', request().origin, 'fill', 'registration-email')).toThrow('AUDIT_UNAVAILABLE');
+  });
+
+  test('executionSignal validates binding and returns stable signal without granting authority or exposing secrets', () => {
+    const broker = new PolicyBroker(defaultCatalog(), noopSink);
+    try {
+      const grant = broker.approve(request());
+      expect(() => broker.executionSignal('unknown-handle', 'signup')).toThrow('INVALID_GRANT');
+      expect(() => broker.executionSignal(grant, 'other-task')).toThrow('INVALID_GRANT');
+      expect(() => broker.executionSignal('', 'signup')).toThrow('INVALID_GRANT');
+      expect(() => broker.executionSignal(grant, '')).toThrow('INVALID_GRANT');
+
+      const signal1 = broker.executionSignal(grant, 'signup');
+      const signal2 = broker.executionSignal(grant, 'signup');
+      expect(signal1).toBe(signal2);
+      expect(signal1.aborted).toBe(false);
+
+      expect(broker.canObserve('signup')).toBe(true);
+      expect(broker.state('signup')).toBe('normal');
+      const events = broker.audit();
+      expect(events.some(e => e.event === 'fill_authorized' || e.event === 'submit_authorized')).toBe(false);
+    } finally {
+      broker.stopAll();
+    }
+  });
+
+  test('aborts only affected grants on credential reclassification, destination block, and revoke', () => {
+    const catalog: Record<string, Layer> = {
+      'email-cred': 'yellow',
+      'pwd-cred': 'red',
+      'pin-cred': 'orange',
+    };
+    const broker = new PolicyBroker(catalog, noopSink);
+    try {
+      const grantPwd = broker.approve({
+        ...request(),
+        task: 'task-pwd',
+        origin: 'https://site-a.example.test',
+        credentials: ['pwd-cred'],
+        layers: ['red'],
+      });
+      const grantEmail = broker.approve({
+        ...request(),
+        task: 'task-email',
+        origin: 'https://site-b.example.test',
+        credentials: ['email-cred'],
+        layers: ['yellow'],
+      });
+      const grantPin = broker.approve({
+        ...request(),
+        task: 'task-pin',
+        origin: 'https://site-c.example.test',
+        credentials: ['pin-cred'],
+        layers: ['orange'],
+      });
+
+      const signalPwd = broker.executionSignal(grantPwd, 'task-pwd');
+      const signalEmail = broker.executionSignal(grantEmail, 'task-email');
+      const signalPin = broker.executionSignal(grantPin, 'task-pin');
+
+      broker.setCredentialLayer('pwd-cred', 'orange');
+      expect(signalPwd.aborted).toBe(true);
+      expect(signalEmail.aborted).toBe(false);
+      expect(signalPin.aborted).toBe(false);
+      expect(broker.state('task-pwd')).toBe('stopped');
+      expect(broker.state('task-email')).toBe('normal');
+
+      broker.block('https://site-b.example.test');
+      expect(signalEmail.aborted).toBe(true);
+      expect(signalPin.aborted).toBe(false);
+      expect(broker.state('task-email')).toBe('stopped');
+      expect(broker.state('task-pin')).toBe('normal');
+
+      broker.revoke(grantPin);
+      expect(signalPin.aborted).toBe(true);
+      expect(broker.state('task-pin')).toBe('stopped');
+    } finally {
+      broker.stopAll();
+    }
+  });
+
+  test('stopAll and audit fault globally abort active signals with reentrancy safety', () => {
+    let reentrantApproved = '';
+    let reentrantAuthorizeThrew = false;
+
+    const broker = new PolicyBroker(defaultCatalog(), noopSink);
+    try {
+      const grant1 = broker.approve({ ...request(), task: 'task-1' });
+      const grant2 = broker.approve({ ...request(), task: 'task-2' });
+
+      const signal1 = broker.executionSignal(grant1, 'task-1');
+      const signal2 = broker.executionSignal(grant2, 'task-2');
+
+      signal1.addEventListener('abort', () => {
+        try {
+          broker.authorize(grant1, 'task-1', request().origin, 'fill', 'registration-email');
+        } catch {
+          reentrantAuthorizeThrew = true;
+        }
+        reentrantApproved = broker.approve({ ...request(), task: 'task-reentrant' });
+      });
+
+      broker.stopAll();
+
+      expect(signal1.aborted).toBe(true);
+      expect(signal2.aborted).toBe(true);
+      expect(broker.state('task-1')).toBe('stopped');
+      expect(broker.state('task-2')).toBe('stopped');
+      expect(reentrantAuthorizeThrew).toBe(true);
+      expect(reentrantApproved).not.toBe('');
+      expect(broker.state('task-reentrant')).toBe('normal');
+      const signalReentrant = broker.executionSignal(reentrantApproved, 'task-reentrant');
+      expect(signalReentrant.aborted).toBe(false);
+
+      let failSink = false;
+      const faultBroker = new PolicyBroker(defaultCatalog(), () => {
+        if (failSink) throw new Error('disk full');
+      });
+      try {
+        const faultGrant = faultBroker.approve({ ...request(), task: 'fault-task' });
+        const faultSignal = faultBroker.executionSignal(faultGrant, 'fault-task');
+        failSink = true;
+        expect(() => faultBroker.authorize(faultGrant, 'fault-task', 'https://bad.test', 'fill', 'registration-email')).toThrow('AUDIT_UNAVAILABLE');
+        expect(faultSignal.aborted).toBe(true);
+        expect(faultBroker.state('fault-task')).toBe('stopped');
+        expect(() => faultBroker.executionSignal(faultGrant, 'fault-task')).toThrow('AUDIT_UNAVAILABLE');
+      } finally {
+        faultBroker.stopAll();
+      }
+    } finally {
+      broker.stopAll();
+    }
+  });
+
+  // Deliberately exercises real 1-second scheduled expiry against platform clock per spec
+  test('real scheduled expiry with 1-second duration aborts signal and logs event', async () => {
+    const broker = new PolicyBroker(defaultCatalog(), noopSink);
+    try {
+      const grant = broker.approve({ ...request(), durationSeconds: 1 });
+      const signal = broker.executionSignal(grant, 'signup');
+      expect(signal.aborted).toBe(false);
+
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      const deadlineTimer = setTimeout(() => reject(new Error('timeout waiting for expiry')), 3000);
+      signal.addEventListener('abort', () => {
+        clearTimeout(deadlineTimer);
+        resolve();
+      }, { once: true });
+
+      await promise;
+
+      expect(signal.aborted).toBe(true);
+      expect(broker.state('signup')).toBe('stopped');
+      const last = broker.audit().at(-1);
+      expect(last?.event).toBe('grant_expired');
+      expect(last?.reason).toBe('GRANT_EXPIRED');
+      expect(last?.task).toBe('signup');
+      expect(() => broker.authorize(grant, 'signup', request().origin, 'fill', 'registration-email')).toThrow('INVALID_GRANT');
+    } finally {
+      broker.stopAll();
+    }
+  });
+
+  test('fake-clock overdue lookup triggers expiry, aborts signal, and cleans up', () => {
+    let fakeNow = 1000;
+    const broker = new PolicyBroker(defaultCatalog(), noopSink, () => fakeNow);
+    try {
+      const grant = broker.approve({ ...request(), durationSeconds: 10 });
+      const signal = broker.executionSignal(grant, 'signup');
+      expect(signal.aborted).toBe(false);
+
+      fakeNow = 11001;
+      expect(() => broker.executionSignal(grant, 'signup')).toThrow('GRANT_EXPIRED');
+      expect(signal.aborted).toBe(true);
+      expect(broker.state('signup')).toBe('stopped');
+      const last = broker.audit().at(-1);
+      expect(last?.event).toBe('grant_expired');
+      expect(last?.reason).toBe('GRANT_EXPIRED');
+
+      expect(() => broker.executionSignal(grant, 'signup')).toThrow('INVALID_GRANT');
+    } finally {
+      broker.stopAll();
+    }
+  });
+
+  // Deliberately exercises clock rescheduling and timer callback unhandled error safety against platform clock
+  test('reschedules timer if clock indicates deadline not reached, and catches audit failure safely', async () => {
+    let customClock = 0;
+    const broker = new PolicyBroker(defaultCatalog(), noopSink, () => customClock);
+    try {
+      const grant = broker.approve({ ...request(), durationSeconds: 1 });
+      const signal = broker.executionSignal(grant, 'signup');
+      customClock = 500;
+
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      const timeout = setTimeout(() => reject(new Error('reschedule timeout')), 3500);
+
+      const stepTimer = setTimeout(() => {
+        customClock = 1500;
+      }, 1100);
+
+      signal.addEventListener('abort', () => {
+        clearTimeout(timeout);
+        clearTimeout(stepTimer);
+        resolve();
+      }, { once: true });
+
+      await promise;
+      expect(signal.aborted).toBe(true);
+    } finally {
+      broker.stopAll();
+    }
+
+    let failExpiryAudit = false;
+    const faultBroker = new PolicyBroker(defaultCatalog(), (event) => {
+      if (failExpiryAudit && event.event === 'grant_expired') {
+        throw new Error('journal disk unmounted');
+      }
+    });
+    try {
+      const grant = faultBroker.approve({ ...request(), durationSeconds: 1 });
+      const signal = faultBroker.executionSignal(grant, 'signup');
+      failExpiryAudit = true;
+
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      const timeout = setTimeout(() => reject(new Error('fault expiry timeout')), 3000);
+      signal.addEventListener('abort', () => {
+        clearTimeout(timeout);
+        resolve();
+      }, { once: true });
+
+      await promise;
+      expect(signal.aborted).toBe(true);
+      expect(faultBroker.state('signup')).toBe('stopped');
+      expect(() => faultBroker.approve({ ...request(), task: 'after-fault' })).toThrow('AUDIT_UNAVAILABLE');
+    } finally {
+      faultBroker.stopAll();
+    }
+  });
+  // Deliberately exercises that finish clears platform timer so it does not fire past the 1-second window
+  test('finish clears timer and releases resources without aborting successful signal', async () => {
+    let fakeNow = 1000;
+    const broker = new PolicyBroker(defaultCatalog(), noopSink, () => fakeNow);
+    try {
+      const grant = broker.approve({ ...request(), durationSeconds: 1 });
+      const signal = broker.executionSignal(grant, 'signup');
+      broker.authorize(grant, 'signup', request().origin, 'fill', 'registration-email');
+      broker.authorize(grant, 'signup', request().origin, 'submit');
+      broker.finish('signup', 'completed');
+
+      expect(signal.aborted).toBe(false);
+      expect(broker.state('signup')).toBe('completed');
+
+      fakeNow = 50000;
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(() => resolve(), 1200);
+      await promise;
+
+      expect(signal.aborted).toBe(false);
+      const audit = broker.audit();
+      expect(audit.some(e => e.event === 'grant_expired')).toBe(false);
+
+      expect(() => broker.authorize(grant, 'signup', request().origin, 'fill', 'registration-email')).toThrow('TASK_NOT_ACTIVE');
+      expect(() => broker.executionSignal(grant, 'signup')).toThrow('TASK_NOT_ACTIVE');
+    } finally {
+      broker.stopAll();
+    }
+  });
+  test('reclassification removes every affected authority before abort callbacks run', () => {
+    const broker = new PolicyBroker(defaultCatalog(), noopSink);
+    try {
+      const first = broker.approve({ ...request(), task: 'first', credentials: ['registration-email'], layers: ['yellow', 'orange'] });
+      const second = broker.approve({ ...request(), task: 'second', credentials: ['registration-email'], layers: ['yellow', 'orange'] });
+      const firstSignal = broker.executionSignal(first, 'first');
+      const secondSignal = broker.executionSignal(second, 'second');
+      let authorizedDuringAbort = false;
+      firstSignal.addEventListener('abort', () => {
+        try {
+          broker.authorize(second, 'second', request().origin, 'fill', 'registration-email');
+          authorizedDuringAbort = true;
+        } catch { /* The whole affected set must already be inactive. */ }
+      }, { once: true });
+      broker.setCredentialLayer('registration-email', 'orange');
+      expect(authorizedDuringAbort).toBe(false);
+      expect(firstSignal.aborted).toBe(true);
+      expect(secondSignal.aborted).toBe(true);
+    } finally {
+      broker.stopAll();
+    }
   });
 });

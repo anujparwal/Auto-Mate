@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Added grant-bound cancellation signals and active monotonic expiry timers. Revocation, Stop, destination blocking, reclassification, and audit faults cancel affected executions; expiry is recorded as `grant_expired` without exposing account metadata.
+- Made protected browser-context teardown independent of pending navigation, context creation, observer work, and native persistence. Already-started native writes remain awaited for an honest persistence result and are never filled/submitted after cancellation.
+- Preserved final owner capture on success, cancelled finished-grant timers, prevented reentrant reclassification from leaving another affected task authorized, and bounded teardown errors without falsely reporting completion.
+- Added broker and actual Chromium cancellation regressions; verified real Windows synthetic persistence with delayed acknowledgement and owner Stop/expiry/history behavior.
+
+- Added an owner-only historical audit viewer with read-only session/event pagination, manual active-journal refresh, opaque task correlation, and bounded error/incomplete-tail states; browsing never approves or starts a task.
+- Added bounded asynchronous journal snapshots with strict full-file validation, shared writer/reader allowlists, unknown-field/corruption refusal, traversal protection, and explicit file/row/directory limits. Existing independent file/session UUIDs remain supported without changing journal format.
+- Added history privacy, pagination, boundary, and live-append regressions. Verified the actual owner UI, including late-response isolation, stale-row clearing, manual error recovery, and 390 px layout.
+
 - Added explicit owner single-task approval/denial with initially unchecked categories, a 1/5/15-minute duration selector, fixed destination/operation disclosure, retry for insufficient category scope, and terminal audit-failure handling.
 - Added per-session metadata-minimal durable JSONL audit records and mandatory synchronous broker sinks. Audit failure revokes all grants and permanently locks out the broker; asynchronous sinks cannot silently authorize before persistence.
 - Preserved stopped/denied preview states and paused periodic capture across intentional submission navigation to avoid false evidence failures; restored the final completed-page capture.
@@ -30,4 +39,4 @@
 - Added a separate Android Keystore vault application; platform build/device verification is required before security claims.
 - Added deterministic policy regression tests and a controlled Windows vault-to-browser smoke scenario.
 
-This increment is not a complete autonomous agent. Successful Windows Hello hardware verification, Android device authentication/browser automation, model-provider integration, authenticated production approval/dashboard surfaces, historical audit viewing, OS notifications, and independent security review remain outstanding.
+This increment is not a complete autonomous agent. Successful Windows Hello hardware verification, Android device authentication/browser automation, model-provider integration, authenticated production approval/dashboard surfaces, OS notifications, and independent security review remain outstanding.

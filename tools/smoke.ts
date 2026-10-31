@@ -1,11 +1,12 @@
 import { chromium } from 'playwright';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import assert from 'node:assert/strict';
 import { PolicyBroker } from '../src/policy';
 import { register } from '../src/workflow';
 import { SYNTHETIC_VAULT_ROOT, WindowsPasswordStore } from '../src/windows-vault';
 import { LocalAuditJournal } from '../src/audit';
+import { LocalAuditHistory } from '../src/audit-history';
 
 // Controlled HTTPS origin intercepted inside Chromium; no credentials sent to the internet.
 const origin = 'https://registration.auto-mate.test';
@@ -63,6 +64,16 @@ try {
   assert.equal(events.at(-1).event, 'completed');
   assert.equal(events.filter(event => event.event === 'submit_authorized').length, 1);
   console.log('PASS: durable journal records approval, credential use and completion without raw task/destination/credential values.');
+  const history = new LocalAuditHistory(join(directory, 'audit'));
+  const sessions = await history.sessions();
+  const sessionId = basename(journal.path, '.jsonl');
+  assert.equal(sessions.sessions.some(session => session.id === sessionId), true);
+  const snapshot = await history.events(sessionId);
+  assert.equal(snapshot.truncated, false);
+  assert.deepEqual(snapshot.events.map(event => event.event), events.map(event => event.event));
+  assert.equal(JSON.stringify(snapshot).includes(origin), false);
+  assert.equal(JSON.stringify(snapshot).includes(submittedPassword), false);
+  console.log('PASS: strict history reader returns the committed session without private metadata or values.');
 } finally {
   await browser.close();
   journal.close();

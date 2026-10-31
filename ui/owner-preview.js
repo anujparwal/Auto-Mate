@@ -255,6 +255,421 @@
     byId('overlay').style.visibility = 'visible';
   }
 
+  // ── Audit History Viewer ──────────────────────────────────────────
+  const SESSIONS_PER_PAGE = 20;
+  const EVENTS_PER_PAGE = 50;
+
+  const historyErrorLabels = {
+    INVALID_HISTORY_REQUEST: 'Invalid audit history request.',
+    HISTORY_INVALID: 'Audit journal is invalid or corrupted.',
+    HISTORY_TOO_LARGE: 'Audit journal exceeds maximum permitted size.',
+    HISTORY_LIMIT: 'Audit directory entry limit exceeded.',
+    HISTORY_UNAVAILABLE: 'Audit history is currently unavailable.',
+  };
+
+  const auditEventLabels = {
+    approved: 'Task approved',
+    approval_denied: 'Approval denied',
+    grant_expired: 'Permission expired',
+    fill_authorized: 'Fill authorized',
+    submit_authorized: 'Submit authorized',
+    denied: 'Operation denied',
+    completed: 'Task completed',
+    takeover: 'Owner takeover',
+    revoked: 'Access revoked',
+    stopped_all: 'Stopped all',
+  };
+
+  let historyLoaded = false;
+  let sessionRequestGen = 0;
+  let eventRequestGen = 0;
+  let currentSessionOffset = 0;
+  let sessionNextOffset = null;
+  let selectedSessionId = null;
+  let currentEventOffset = 0;
+  let eventNextOffset = null;
+
+  function formatTimestamp(iso) {
+    if (!iso || typeof iso !== 'string') return '—';
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return iso;
+      return d.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+    } catch {
+      return iso;
+    }
+  }
+
+  function formatBytes(bytes) {
+    if (typeof bytes !== 'number' || bytes < 0) return '—';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  async function sendHistoryCommand(cmd) {
+    if (typeof window.autoMateAuditHistory !== 'function') {
+      return { ok: false, code: 'HISTORY_UNAVAILABLE' };
+    }
+    try {
+      const res = await window.autoMateAuditHistory(cmd);
+      if (!res || typeof res !== 'object') {
+        return { ok: false, code: 'HISTORY_UNAVAILABLE' };
+      }
+      return res;
+    } catch {
+      return { ok: false, code: 'HISTORY_UNAVAILABLE' };
+    }
+  }
+
+  async function loadSessions(offset = 0) {
+    const gen = ++sessionRequestGen;
+    const refreshBtn = byId('history-sessions-refresh');
+    const prevBtn = byId('history-sessions-prev');
+    const nextBtn = byId('history-sessions-next');
+    const errorEl = byId('history-sessions-error');
+    const rangeEl = byId('history-sessions-range');
+    const countEl = byId('history-sessions-count');
+    const listEl = byId('history-sessions-list');
+
+    if (refreshBtn) refreshBtn.disabled = true;
+    if (prevBtn) prevBtn.disabled = true;
+    if (nextBtn) nextBtn.disabled = true;
+
+    const res = await sendHistoryCommand({ action: 'sessions', offset });
+    if (gen !== sessionRequestGen) return;
+
+    if (refreshBtn) refreshBtn.disabled = false;
+
+    if (!res.ok) {
+      currentSessionOffset = 0;
+      resetHistorySelection();
+      sessionNextOffset = null;
+      const code = res.code && Object.hasOwn(historyErrorLabels, res.code) ? res.code : 'HISTORY_UNAVAILABLE';
+      if (errorEl) {
+        errorEl.textContent = historyErrorLabels[code];
+        errorEl.hidden = false;
+      }
+      if (rangeEl) rangeEl.textContent = 'Error loading sessions';
+      if (countEl) countEl.textContent = '—';
+      if (listEl) {
+        listEl.replaceChildren(text('p', 'Unable to display audit sessions.', 'history-empty'));
+      }
+      return;
+    }
+
+    if (errorEl) {
+      errorEl.hidden = true;
+      errorEl.textContent = '';
+    }
+    historyLoaded = true;
+    currentSessionOffset = res.page.offset;
+    sessionNextOffset = res.page.nextOffset;
+
+    const total = res.page.total;
+    if (countEl) countEl.textContent = String(total);
+
+    if (total === 0 || !res.page.sessions.length) {
+      if (rangeEl) rangeEl.textContent = total === 0 ? '0 sessions' : 'No sessions on this page';
+      if (listEl) {
+        listEl.replaceChildren(text('p', 'No audit sessions found.', 'history-empty'));
+      }
+      resetHistorySelection();
+      if (prevBtn) prevBtn.disabled = res.page.offset === 0;
+      if (nextBtn) nextBtn.disabled = true;
+      return;
+    }
+
+    const start = res.page.offset + 1;
+    const end = res.page.offset + res.page.sessions.length;
+    if (rangeEl) rangeEl.textContent = `Showing ${start}–${end} of ${total}`;
+
+    if (prevBtn) prevBtn.disabled = res.page.offset === 0;
+    if (nextBtn) nextBtn.disabled = sessionNextOffset === null;
+
+    if (listEl) {
+      const items = res.page.sessions.map(sess => {
+        const item = document.createElement('div');
+        const isSelected = sess.id === selectedSessionId;
+        item.className = 'history-session-item' + (isSelected ? ' selected' : '');
+        item.setAttribute('role', 'button');
+        item.setAttribute('tabindex', '0');
+        item.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+        item.dataset.sessionId = sess.id;
+
+        const tokenRow = document.createElement('div');
+        tokenRow.className = 'session-token-row';
+        const tokenEl = text('span', sess.id.slice(0, 8) + '…', 'session-token');
+        tokenEl.title = sess.id;
+        const sizeEl = text('span', formatBytes(sess.sizeBytes), 'session-size');
+        tokenRow.appendChild(tokenEl);
+        tokenRow.appendChild(sizeEl);
+
+        const timeRow = document.createElement('div');
+        timeRow.className = 'session-time-row';
+        const timeEl = text('span', formatTimestamp(sess.modifiedAt), 'session-time');
+        timeRow.appendChild(timeEl);
+
+        item.appendChild(tokenRow);
+        item.appendChild(timeRow);
+
+        const onSelect = () => {
+          selectSession(sess.id);
+        };
+
+        item.addEventListener('click', onSelect);
+        item.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect();
+          }
+        });
+
+        return item;
+      });
+
+      listEl.replaceChildren(...items);
+    }
+  }
+
+  function clearEventsView() {
+    const tbody = byId('history-events-tbody');
+    if (tbody) tbody.replaceChildren();
+    const warningEl = byId('history-events-warning');
+    if (warningEl) warningEl.hidden = true;
+    const errorEl = byId('history-events-error');
+    if (errorEl) {
+      errorEl.hidden = true;
+      errorEl.textContent = '';
+    }
+    const rangeEl = byId('history-events-range');
+    if (rangeEl) rangeEl.textContent = 'Loading events…';
+    const prevBtn = byId('history-events-prev');
+    if (prevBtn) prevBtn.disabled = true;
+    const nextBtn = byId('history-events-next');
+    if (nextBtn) nextBtn.disabled = true;
+    const refreshBtn = byId('history-events-refresh');
+    if (refreshBtn) refreshBtn.disabled = (selectedSessionId === null);
+  }
+
+  function resetHistorySelection() {
+    selectedSessionId = null;
+    currentEventOffset = 0;
+    eventNextOffset = null;
+    eventRequestGen++;
+    clearEventsView();
+    byId('history-selected-token').textContent = 'No session selected';
+    byId('history-selected-token').removeAttribute('title');
+    byId('history-events-range').textContent = 'No session selected';
+  }
+
+  function selectSession(id) {
+    selectedSessionId = id;
+    currentEventOffset = 0;
+    eventNextOffset = null;
+
+    const listEl = byId('history-sessions-list');
+    if (listEl) {
+      for (const child of listEl.querySelectorAll('.history-session-item')) {
+        const isSel = child.dataset.sessionId === id;
+        child.classList.toggle('selected', isSel);
+        child.setAttribute('aria-pressed', isSel ? 'true' : 'false');
+      }
+    }
+
+    clearEventsView();
+
+    const tokenDisplay = byId('history-selected-token');
+    if (tokenDisplay) {
+      tokenDisplay.textContent = id.slice(0, 8) + '…';
+      tokenDisplay.title = id;
+    }
+
+    void loadEvents(id, 0);
+  }
+
+  async function loadEvents(id, offset = 0) {
+    const gen = ++eventRequestGen;
+    const refreshBtn = byId('history-events-refresh');
+    const prevBtn = byId('history-events-prev');
+    const nextBtn = byId('history-events-next');
+    const errorEl = byId('history-events-error');
+    const warningEl = byId('history-events-warning');
+    const rangeEl = byId('history-events-range');
+    const tbody = byId('history-events-tbody');
+
+    if (refreshBtn) refreshBtn.disabled = true;
+    if (prevBtn) prevBtn.disabled = true;
+    if (nextBtn) nextBtn.disabled = true;
+
+    const res = await sendHistoryCommand({ action: 'events', id, offset });
+    if (gen !== eventRequestGen) return;
+
+    if (refreshBtn) refreshBtn.disabled = false;
+
+    if (!res.ok) {
+      currentEventOffset = 0;
+      eventNextOffset = null;
+      if (tbody) tbody.replaceChildren();
+      if (warningEl) warningEl.hidden = true;
+      const code = res.code && Object.hasOwn(historyErrorLabels, res.code) ? res.code : 'HISTORY_UNAVAILABLE';
+      if (errorEl) {
+        errorEl.textContent = historyErrorLabels[code];
+        errorEl.hidden = false;
+      }
+      if (rangeEl) rangeEl.textContent = 'Error loading events';
+      if (prevBtn) prevBtn.disabled = true;
+      if (nextBtn) nextBtn.disabled = true;
+      return;
+    }
+
+    if (errorEl) {
+      errorEl.hidden = true;
+      errorEl.textContent = '';
+    }
+    currentEventOffset = res.page.offset;
+    eventNextOffset = res.page.nextOffset;
+
+    if (warningEl) {
+      warningEl.hidden = !res.page.truncated;
+    }
+
+    const total = res.page.total;
+    if (total === 0 || !res.page.events.length) {
+      if (rangeEl) rangeEl.textContent = '0 events';
+      if (tbody) {
+        const tr = document.createElement('tr');
+        const td = text('td', 'No events recorded in this session.', 'history-empty');
+        td.colSpan = 5;
+        tr.appendChild(td);
+        tbody.replaceChildren(tr);
+      }
+      if (prevBtn) prevBtn.disabled = true;
+      if (nextBtn) nextBtn.disabled = true;
+      return;
+    }
+
+    const start = res.page.offset + 1;
+    const end = res.page.offset + res.page.events.length;
+    if (rangeEl) rangeEl.textContent = `Showing ${start}–${end} of ${total}`;
+
+    if (prevBtn) prevBtn.disabled = res.page.offset === 0;
+    if (nextBtn) nextBtn.disabled = eventNextOffset === null;
+
+    if (tbody) {
+      const rows = res.page.events.map(ev => {
+        const tr = document.createElement('tr');
+
+        const tdSeq = text('td', '#' + ev.sequence, 'col-seq');
+        const tdTime = text('td', formatTimestamp(ev.at), 'col-time');
+        tdTime.title = ev.at;
+
+        const eventLabel = Object.hasOwn(auditEventLabels, ev.event)
+          ? auditEventLabels[ev.event]
+          : ev.event;
+        const tdEvent = document.createElement('td');
+        tdEvent.className = 'col-event';
+        const eventBadge = text('span', eventLabel, 'event-badge event-' + ev.event);
+        tdEvent.appendChild(eventBadge);
+
+        const tdTask = document.createElement('td');
+        tdTask.className = 'col-task';
+        if (ev.task) {
+          const taskCode = text('code', ev.task.slice(0, 8) + '…', 'history-token');
+          taskCode.title = ev.task;
+          tdTask.appendChild(taskCode);
+        } else {
+          tdTask.textContent = '—';
+        }
+
+        const tdReason = document.createElement('td');
+        tdReason.className = 'col-reason';
+        if (ev.reason) {
+          const reasonCode = text('code', ev.reason, 'reason-code');
+          tdReason.appendChild(reasonCode);
+        } else {
+          tdReason.textContent = '—';
+        }
+
+        tr.appendChild(tdSeq);
+        tr.appendChild(tdTime);
+        tr.appendChild(tdEvent);
+        tr.appendChild(tdTask);
+        tr.appendChild(tdReason);
+        return tr;
+      });
+
+      tbody.replaceChildren(...rows);
+    }
+  }
+
+  const detailsEl = byId('history-details');
+  if (detailsEl) {
+    detailsEl.addEventListener('toggle', () => {
+      if (detailsEl.open && !historyLoaded) {
+        void loadSessions(0);
+      }
+    });
+  }
+
+  const sessionsRefreshBtn = byId('history-sessions-refresh');
+  if (sessionsRefreshBtn) {
+    sessionsRefreshBtn.addEventListener('click', () => {
+      void loadSessions(currentSessionOffset);
+    });
+  }
+
+  const sessionsPrevBtn = byId('history-sessions-prev');
+  if (sessionsPrevBtn) {
+    sessionsPrevBtn.addEventListener('click', () => {
+      void loadSessions(Math.max(0, currentSessionOffset - SESSIONS_PER_PAGE));
+    });
+  }
+
+  const sessionsNextBtn = byId('history-sessions-next');
+  if (sessionsNextBtn) {
+    sessionsNextBtn.addEventListener('click', () => {
+      if (sessionNextOffset !== null) {
+        void loadSessions(sessionNextOffset);
+      }
+    });
+  }
+
+  const eventsRefreshBtn = byId('history-events-refresh');
+  if (eventsRefreshBtn) {
+    eventsRefreshBtn.addEventListener('click', () => {
+      if (selectedSessionId) {
+        void loadEvents(selectedSessionId, currentEventOffset);
+      }
+    });
+  }
+
+  const eventsPrevBtn = byId('history-events-prev');
+  if (eventsPrevBtn) {
+    eventsPrevBtn.addEventListener('click', () => {
+      if (selectedSessionId) {
+        void loadEvents(selectedSessionId, Math.max(0, currentEventOffset - EVENTS_PER_PAGE));
+      }
+    });
+  }
+
+  const eventsNextBtn = byId('history-events-next');
+  if (eventsNextBtn) {
+    eventsNextBtn.addEventListener('click', () => {
+      if (selectedSessionId && eventNextOffset !== null) {
+        void loadEvents(selectedSessionId, eventNextOffset);
+      }
+    });
+  }
+
   window.autoMateOwnerUpdate = update => {
     if (update.kind === 'state') renderState(update.state);
     if (update.kind === 'frame') void renderFrame(update.frame);

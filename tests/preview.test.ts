@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
-import { chromium, type Browser } from 'playwright';
+import { chromium, type Browser, type Page } from 'playwright';
 import { verifyFieldRequests, fillVerifiedField, captureOwnerFrame } from '../src/preview-capture';
 import { PolicyBroker } from '../src/policy';
 import { register } from '../src/workflow';
@@ -160,8 +160,9 @@ test('reclassification during native persistence prevents both fills and submiss
   const policy = new PolicyBroker({ 'registration-email': 'yellow', 'registration-password': 'red' }, () => {});
   const grant = policy.approve({ task: 'reclassified', origin, credentials: ['registration-email', 'registration-password'], layers: ['yellow', 'red'], operations: ['fill', 'submit'], durationSeconds: 30, maxSubmissions: 1 });
   let submitted = false;
-  let readInputs: (() => Promise<string[]>) | undefined;
-  let stoppedInputs: string[] | undefined;
+  let contextClosed = false;
+  let stoppedObserved = false;
+  let pageRef: Page | undefined;
   const result = await register(browser, policy, {
     async generateAndPersist() {
       policy.setCredentialLayer('registration-email', 'orange');
@@ -170,7 +171,8 @@ test('reclassification during native persistence prevents both fills and submiss
   }, 'reclassified', grant, {
     origin, path: '/', email, password, submitSelector: '#submit', successSelector: '#success',
   }, 'synthetic@example.test', async page => {
-    readInputs = () => page.locator('input').evaluateAll(inputs => inputs.map(input => (input as HTMLInputElement).value));
+    pageRef = page;
+    page.context().on('close', () => { contextClosed = true; });
     await page.route('**/*', async route => {
       if (route.request().method() === 'POST') submitted = true;
       await route.fulfill({ contentType: 'text/html', body: form });
@@ -178,10 +180,12 @@ test('reclassification during native persistence prevents both fills and submiss
   }, {
     async requested() {},
     async verified() {},
-    async state(phase) { if (phase === 'stopped') stoppedInputs = await readInputs!(); },
+    async state(phase) { if (phase === 'stopped') stoppedObserved = true; },
   });
   expect(result).toEqual({ status: 'takeover', credentialSaved: true });
-  expect(stoppedInputs).toEqual(['', '']);
+  expect(contextClosed).toBe(true);
+  expect(pageRef?.isClosed()).toBe(true);
+  expect(stoppedObserved).toBe(true);
   expect(submitted).toBe(false);
   expect(policy.state('reclassified')).toBe('stopped');
 });

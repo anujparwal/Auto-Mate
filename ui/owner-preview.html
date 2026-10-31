@@ -84,6 +84,98 @@
       <div id="approval-error" class="approval-error" role="alert" aria-live="polite" hidden></div>
     </section>
 
+    <section id="audit-history-card" class="audit-history-card" aria-label="Audit history">
+      <details id="history-details" class="history-details">
+        <summary class="history-summary">
+          <div class="history-summary-title">
+            <h2>Audit history</h2>
+            <span class="history-hint">Read-only local journals · Inspect past and active sessions</span>
+          </div>
+        </summary>
+
+        <div class="history-content">
+          <div class="history-notice" role="note">
+            <p>
+              <strong>Read-only local view.</strong> No account identities are stored; authorization is not proof of completed action; local files can be modified.
+            </p>
+          </div>
+
+          <div class="history-columns">
+            <section class="history-pane history-sessions-pane" aria-labelledby="history-sessions-heading">
+              <div class="history-pane-header">
+                <div class="history-pane-title">
+                  <h3 id="history-sessions-heading">Sessions</h3>
+                  <span id="history-sessions-count" class="history-badge">0</span>
+                </div>
+                <div class="history-pane-actions">
+                  <button id="history-sessions-refresh" class="history-btn-refresh" type="button" aria-label="Refresh sessions">Refresh sessions</button>
+                </div>
+              </div>
+
+              <div id="history-sessions-error" class="history-error" role="alert" aria-live="polite" hidden></div>
+
+              <div class="history-pagination">
+                <span id="history-sessions-range" class="history-range" aria-live="polite">No sessions loaded</span>
+                <div class="history-page-nav">
+                  <button id="history-sessions-prev" class="history-btn-nav" type="button" aria-label="Previous sessions page" disabled>Prev</button>
+                  <button id="history-sessions-next" class="history-btn-nav" type="button" aria-label="Next sessions page" disabled>Next</button>
+                </div>
+              </div>
+
+              <div id="history-sessions-list" class="history-sessions-list" role="list" aria-label="Audit sessions">
+                <p class="history-empty">No sessions loaded</p>
+              </div>
+            </section>
+
+            <section class="history-pane history-events-pane" aria-labelledby="history-events-heading">
+              <div class="history-pane-header">
+                <div class="history-pane-title">
+                  <h3 id="history-events-heading">Events</h3>
+                  <span id="history-selected-token" class="history-selected-token">No session selected</span>
+                </div>
+                <div class="history-pane-actions">
+                  <button id="history-events-refresh" class="history-btn-refresh" type="button" aria-label="Refresh events" disabled>Refresh events</button>
+                </div>
+              </div>
+
+              <div id="history-events-warning" class="history-warning" role="status" aria-live="polite" hidden>
+                Incomplete final row detected; tail fragment was ignored.
+              </div>
+
+              <div id="history-events-error" class="history-error" role="alert" aria-live="polite" hidden></div>
+
+              <div class="history-pagination">
+                <span id="history-events-range" class="history-range" aria-live="polite">Select a session</span>
+                <div class="history-page-nav">
+                  <button id="history-events-prev" class="history-btn-nav" type="button" aria-label="Previous events page" disabled>Prev</button>
+                  <button id="history-events-next" class="history-btn-nav" type="button" aria-label="Next events page" disabled>Next</button>
+                </div>
+              </div>
+
+              <div id="history-events-container" class="history-events-container">
+                <table class="history-table" aria-label="Session audit events">
+                  <thead>
+                    <tr>
+                      <th scope="col" class="col-seq">#</th>
+                      <th scope="col" class="col-time">Time</th>
+                      <th scope="col" class="col-event">Event</th>
+                      <th scope="col" class="col-task">Task</th>
+                      <th scope="col" class="col-reason">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody id="history-events-tbody">
+                    <tr>
+                      <td colspan="5" class="history-empty">Select a session to inspect events.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </div>
+      </details>
+    </section>
+
     <div class="workspace">
       <section class="browser-panel" aria-label="Observed website">
         <div class="panel-heading"><h2>Live website</h2><span id="freshness">No frames yet</span></div>
