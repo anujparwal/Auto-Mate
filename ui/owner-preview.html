@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Auto-Mate · Owner preview</title>
+  <link rel="stylesheet" href="/owner-preview.css">
+  <script src="/owner-preview.js" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="identity"><svg viewBox="0 0 28 28" width="28" height="28" aria-hidden="true"><path d="M3 21 10 7h5l-7 14M14 21l7-14h4l-7 14M8 16h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><strong>Auto-Mate</strong><span>Owner preview</span></div>
+    <span class="boundary">Local only · Not shared with AI</span>
+  </header>
+  <main>
+    <section class="task-heading" aria-labelledby="title">
+      <div><h1 id="title">Watch the task, not the secrets.</h1><p id="description">Synthetic registration · No AI model connected</p></div>
+      <div class="controls">
+        <button id="approve" class="primary" type="button" disabled>Approve &amp; run synthetic task</button>
+        <button id="deny" type="button" disabled>Deny task</button>
+        <button id="stop" type="button" disabled>Stop task</button>
+      </div>
+    </section>
+    <div class="task-meta"><span id="origin">Waiting for a task</span><span id="phase" role="status" aria-live="polite">Ready</span></div>
+
+    <section id="approval-card" class="approval-card" aria-label="Task authorization and scope">
+      <div class="approval-header">
+        <h2>Task authorization</h2>
+        <span id="approval-badge" class="approval-badge">Owner approval required</span>
+      </div>
+      <p class="approval-notice">
+        <strong>Single-task permission only.</strong> Synthetic registration; no AI model connected.
+        Authorizes one-time execution for this task only. This is <em>not</em> a native authentication bypass and does <em>not</em> open a blanket timed auto-approval window. No hidden preapproval.
+      </p>
+
+      <div class="approval-grid">
+        <div class="approval-field">
+          <span class="approval-label">Trusted destination</span>
+          <span id="approval-destination" class="approval-value">—</span>
+        </div>
+        <div class="approval-field">
+          <span class="approval-label">Operation scope</span>
+          <span id="approval-scope" class="approval-value">Fill fields and submit this registration once</span>
+        </div>
+      </div>
+
+      <div class="approval-field">
+        <span class="approval-label">Requested credentials</span>
+        <div id="approval-credentials" class="approval-credentials-list">
+          <p class="waiting">No pending task</p>
+        </div>
+      </div>
+
+      <div class="approval-controls-row">
+        <fieldset class="approval-categories">
+          <legend>Approved categories</legend>
+          <div class="category-checkboxes">
+            <label class="category-choice yellow" for="category-yellow">
+              <input type="checkbox" id="category-yellow" name="category" value="yellow">
+              <span>Yellow · Profile</span>
+            </label>
+            <label class="category-choice orange" for="category-orange">
+              <input type="checkbox" id="category-orange" name="category" value="orange">
+              <span>Orange · Identity</span>
+            </label>
+            <label class="category-choice red" for="category-red">
+              <input type="checkbox" id="category-red" name="category" value="red">
+              <span>Red · Secrets</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="approval-duration">
+          <label for="duration">Authorization duration</label>
+          <select id="duration" name="duration">
+            <option value="60" selected>1 minute (60 seconds)</option>
+            <option value="300">5 minutes (300 seconds)</option>
+            <option value="900">15 minutes (900 seconds)</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="approval-error" class="approval-error" role="alert" aria-live="polite" hidden></div>
+    </section>
+
+    <div class="workspace">
+      <section class="browser-panel" aria-label="Observed website">
+        <div class="panel-heading"><h2>Live website</h2><span id="freshness">No frames yet</span></div>
+        <div id="frame-shell" class="frame-shell">
+          <div id="empty" class="empty"><h3>A view you can verify.</h3><p>Approve the synthetic task with the required categories to see each website request paired with the field it targets.</p><p>Input values are covered. The executor—not the AI—draws every annotation.</p></div>
+          <div id="canvas" class="canvas" hidden><img id="frame" alt="Owner-only website preview with input values covered" draggable="false"><div id="overlay" class="overlay" aria-hidden="true"></div></div>
+        </div>
+        <div class="legend"><span><i class="request-swatch"></i>Website request</span><span><i class="field-swatch"></i>Target field</span><span>Matching numbers connect the pair</span></div>
+        <p id="frame-notice" class="frame-notice">Read-only observer. Use the Stop task control to revoke further execution.</p>
+      </section>
+      <aside aria-label="Deterministic credential activity">
+        <section class="requests-panel"><div class="panel-heading"><h2>What is being requested</h2><span id="request-count">0 fields</span></div><div id="requests" class="request-list"><p class="waiting">Verified text-to-field links will appear here. Nearby text alone is not evidence.</p></div></section>
+        <section class="activity-panel"><div class="panel-heading"><h2>Execution activity</h2></div><ol id="activity" class="activity"><li>Waiting for owner approval.</li></ol></section>
+      </aside>
+    </div>
+    <footer><p>Yellow · Profile information <span>Orange · Identity information</span><span>Red · Secrets</span></p><p>Categories come from trusted configuration. A verified label is not a trusted website.</p></footer>
+  </main>
+</body>
+</html>

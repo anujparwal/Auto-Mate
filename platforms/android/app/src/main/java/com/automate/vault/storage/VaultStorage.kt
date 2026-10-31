@@ -56,19 +56,32 @@ class VaultStorage(context: Context) {
 
             val jsonString = String(bytes, 0, totalRead, StandardCharsets.UTF_8).trim()
             if (jsonString.isEmpty()) {
-                return emptyList()
+                // Fail closed: existing file is empty or truncated
+                throw VaultStorageException("Vault storage file exists but is empty or truncated. Refusing to load.")
             }
 
             val jsonArray = JSONArray(jsonString)
             val list = mutableListOf<CredentialRecord>()
+            val seenIds = mutableSetOf<String>()
             for (i in 0 until jsonArray.length()) {
-                val itemObj = jsonArray.getJSONObject(i)
-                list.add(CredentialRecord.fromJson(itemObj))
+                val itemObj = jsonArray.optJSONObject(i)
+                    ?: throw VaultStorageException("Vault record at index $i is not a JSON object")
+                val record = try {
+                    CredentialRecord.fromJson(itemObj)
+                } catch (e: Exception) {
+                    throw VaultStorageException("Vault record failed schema validation.")
+                }
+                if (!seenIds.add(record.id)) {
+                    throw VaultStorageException("Duplicate credential identities in vault.")
+                }
+                list.add(record)
             }
-            return list.sortedByDescending { it.createdAt }
+            return list
+        } catch (e: VaultStorageException) {
+            throw e
         } catch (e: Exception) {
             // Fail closed: never return emptyList() on read/parse error
-            throw VaultStorageException("Vault storage load failed or file is corrupted: ${e.message}", e)
+            throw VaultStorageException("Vault storage could not be loaded.")
         } finally {
             try {
                 fis?.close()
@@ -82,7 +95,7 @@ class VaultStorage(context: Context) {
      */
     @Synchronized
     @Throws(VaultStorageException::class)
-    fun saveCredential(record: CredentialRecord) {
+    fun saveCredential(record: CredentialRecord.V2) {
         val current = loadCredentials().toMutableList()
         val index = current.indexOfFirst { it.id == record.id }
         if (index >= 0) {
@@ -131,7 +144,7 @@ class VaultStorage(context: Context) {
             if (fos != null) {
                 atomicFile.failWrite(fos)
             }
-            throw VaultStorageException("Failed to atomically persist vault records: ${e.message}", e)
+            throw VaultStorageException("Vault storage write failed. Reopen the vault before retrying.")
         }
     }
 }

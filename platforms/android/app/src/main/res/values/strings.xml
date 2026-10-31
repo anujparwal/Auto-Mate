@@ -28,14 +28,35 @@
     <string name="action_copy">Copy</string>
     <string name="action_close">Close</string>
     <string name="action_delete">Delete</string>
+    <string name="action_upgrade">Upgrade to v2</string>
     <string name="copied_to_clipboard">Password copied securely to clipboard</string>
     <string name="auto_clear_notice">Sensitive view clears automatically</string>
+    <string name="legacy_unencrypted_metadata_warning">Warning: This record was saved in legacy v1 format with unencrypted metadata on disk. Tap Upgrade to encrypt its metadata into a v2 envelope.</string>
+
+    <!-- Locked Item Display -->
+    <string name="locked_v2_title">Encrypted Credential (%1$s)</string>
+    <string name="locked_v2_subtitle">Metadata encrypted with Keystore AES-GCM</string>
+    <string name="locked_v2_badge">v2 Envelope • Biometric Gated</string>
+    <string name="locked_v1_title">Legacy Credential (%1$s)</string>
+    <string name="locked_v1_subtitle">Unencrypted metadata on disk</string>
+    <string name="locked_v1_badge">Upgrade Required • Action Needed</string>
 
     <!-- Biometric prompts -->
     <string name="biometric_save_title">Authenticate to Store Credential</string>
     <string name="biometric_save_subtitle">Authorize Keystore AES-GCM encryption with your biometric or device credential</string>
     <string name="biometric_reveal_title">Authenticate to Reveal Credential</string>
     <string name="biometric_reveal_subtitle">Confirm your biometric or device credential to decrypt</string>
+    <string name="biometric_reveal_v2_subtitle">Confirm biometric or device credential to decrypt</string>
+    <string name="biometric_reveal_v1_subtitle">Confirm biometric or device credential to decrypt legacy record</string>
+    <string name="biometric_delete_title">Authenticate to Delete</string>
+    <string name="biometric_delete_subtitle">Confirm your identity to verify credential deletion</string>
+    <string name="biometric_upgrade_step1_title">Upgrade to v2 (Step 1 of 2)</string>
+    <string name="biometric_upgrade_step1_subtitle">Authenticate to decrypt legacy credential</string>
+    <string name="biometric_upgrade_step2_title">Upgrade to v2 (Step 2 of 2)</string>
+    <string name="biometric_upgrade_step2_subtitle">Authenticate to encrypt into v2 metadata envelope</string>
+    <string name="upgrade_success">Credential metadata encrypted and upgraded to v2 envelope.</string>
+    <string name="upgrade_cancelled">Upgrade cancelled. Legacy record preserved unchanged.</string>
+    <string name="delete_confirmation_message">Permanently delete credential for %1$s (%2$s)?</string>
     <string name="auth_cancelled">Authentication cancelled. No secret was revealed.</string>
     <string name="auth_failed">Authentication failed.</string>
 </resources>

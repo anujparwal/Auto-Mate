@@ -4,11 +4,17 @@ export type Layer = 'yellow' | 'orange' | 'red';
 export type Operation = 'fill' | 'submit';
 export type State = 'normal' | 'protected' | 'takeover' | 'completed' | 'stopped';
 export type Audit = Readonly<{ sequence: number; task: string; event: string; origin: string; reason?: string }>;
+export type AuditSink = (event: Audit) => void;
 export type GrantRequest = Readonly<{
   task: string; origin: string; credentials: readonly string[];
+  layers: readonly Layer[];
   operations: readonly Operation[]; durationSeconds: number; maxSubmissions: number;
 }>;
 type Grant = { request: GrantRequest; deadline: number; remaining: number; epoch: number };
+
+function isValidLayer(value: unknown): value is Layer {
+  return value === 'yellow' || value === 'orange' || value === 'red';
+}
 
 export class PolicyError extends Error {
   constructor(readonly code: string) { super(code); this.name = 'PolicyError'; }
@@ -23,30 +29,102 @@ export function httpsOrigin(value: string): string {
 
 /** Trusted owner component. Never export this instance into model tool bindings. */
 export class PolicyBroker {
+  #catalog = new Map<string, Layer>();
   #grants = new Map<string, Grant>();
   #states = new Map<string, State>();
   #blocked = new Set<string>();
   #events: Audit[] = [];
   #epoch = 0;
-  constructor(private readonly clock: () => number = () => performance.now()) {}
+  #sink: AuditSink;
+  #faulted = false;
+
+  constructor(
+    credentials: Readonly<Record<string, Layer>>,
+    sink: AuditSink,
+    private readonly clock: () => number = () => performance.now(),
+  ) {
+    if (!credentials || typeof credentials !== 'object' || Array.isArray(credentials)) {
+      throw new PolicyError('INVALID_CATALOG');
+    }
+    for (const [cred, layer] of Object.entries(credentials)) {
+      if (!cred || typeof cred !== 'string') throw new PolicyError('INVALID_CATALOG');
+      if (!isValidLayer(layer)) throw new PolicyError('INVALID_LAYER');
+      this.#catalog.set(cred, layer);
+    }
+    if (typeof sink !== 'function') {
+      throw new PolicyError('INVALID_SINK');
+    }
+    this.#sink = sink;
+  }
+
+  category(credential: string): Layer {
+    if (this.#faulted) throw new PolicyError('AUDIT_UNAVAILABLE');
+    const layer = this.#catalog.get(credential);
+    if (!layer) throw new PolicyError('CREDENTIAL_DENIED');
+    return layer;
+  }
+
+  setCredentialLayer(credential: string, layer: Layer): void {
+    if (this.#faulted) throw new PolicyError('AUDIT_UNAVAILABLE');
+    if (!isValidLayer(layer)) throw new PolicyError('INVALID_LAYER');
+    const current = this.#catalog.get(credential);
+    if (!current) throw new PolicyError('CREDENTIAL_DENIED');
+    if (current === layer) return;
+    this.#catalog.set(credential, layer);
+    for (const [handle, grant] of this.#grants) {
+      if (grant.request.credentials.includes(credential)) this.revoke(handle);
+    }
+  }
 
   approve(input: GrantRequest): string {
+    if (this.#faulted) throw new PolicyError('AUDIT_UNAVAILABLE');
+    if (!input || typeof input !== 'object') throw new PolicyError('INVALID_GRANT');
     const origin = httpsOrigin(input.origin);
-    if (!input.task || !Number.isInteger(input.durationSeconds) || input.durationSeconds < 1 || input.durationSeconds > 900 ||
+    if (!input.task || typeof input.task !== 'string' ||
+      !Number.isInteger(input.durationSeconds) || input.durationSeconds < 1 || input.durationSeconds > 900 ||
       !Number.isInteger(input.maxSubmissions) || input.maxSubmissions < 0 || input.maxSubmissions > 1 ||
-      !input.credentials.length || input.credentials.some(x => !x) || !input.operations.length ||
-      input.operations.some(x => x !== 'fill' && x !== 'submit')) throw new PolicyError('INVALID_GRANT');
+      !Array.isArray(input.credentials) || !input.credentials.length || input.credentials.some(x => typeof x !== 'string' || !x) ||
+      !Array.isArray(input.layers) || !input.layers.length || input.layers.some(x => !isValidLayer(x)) ||
+      !Array.isArray(input.operations) || !input.operations.length || input.operations.some(x => x !== 'fill' && x !== 'submit'))
+      throw new PolicyError('INVALID_GRANT');
     if (this.#blocked.has(origin)) throw new PolicyError('DESTINATION_BLOCKED');
     if (this.#states.has(input.task)) throw new PolicyError('TASK_ALREADY_EXISTS');
-    const request = Object.freeze({ ...input, origin, credentials: Object.freeze([...new Set(input.credentials)]), operations: Object.freeze([...new Set(input.operations)]) });
+
+    const approvedLayers = new Set<Layer>(input.layers);
+    for (const cred of input.credentials) {
+      const layer = this.#catalog.get(cred);
+      if (!layer) throw new PolicyError('CREDENTIAL_DENIED');
+      if (!approvedLayers.has(layer)) throw new PolicyError('CATEGORY_DENIED');
+    }
+
+    const request = Object.freeze({
+      task: input.task,
+      origin,
+      credentials: Object.freeze([...new Set(input.credentials)]),
+      layers: Object.freeze([...new Set(input.layers)]),
+      operations: Object.freeze([...new Set(input.operations)]),
+      durationSeconds: input.durationSeconds,
+      maxSubmissions: input.maxSubmissions,
+    });
     const handle = randomUUID();
+    this.#record(input.task, 'approved', origin);
     this.#grants.set(handle, { request, deadline: this.clock() + input.durationSeconds * 1000, remaining: input.maxSubmissions, epoch: this.#epoch });
     this.#states.set(input.task, 'normal');
-    this.#record(input.task, 'approved', origin);
     return handle;
   }
 
+  denyApproval(task: string, origin: string): void {
+    if (this.#faulted) throw new PolicyError('AUDIT_UNAVAILABLE');
+    const normalizedOrigin = httpsOrigin(origin);
+    if (!task || typeof task !== 'string') throw new PolicyError('INVALID_TASK');
+    if (this.#states.has(task)) throw new PolicyError('TASK_ALREADY_EXISTS');
+
+    this.#record(task, 'approval_denied', normalizedOrigin);
+    this.#states.set(task, 'stopped');
+  }
+
   authorize(handle: string, task: string, originInput: string, operation: Operation, credential?: string): void {
+    if (this.#faulted) throw new PolicyError('AUDIT_UNAVAILABLE');
     const grant = this.#grants.get(handle);
     let origin = '';
     try {
@@ -56,34 +134,65 @@ export class PolicyBroker {
       if (this.#blocked.has(origin) || origin !== grant.request.origin) throw new PolicyError('DESTINATION_DENIED');
       if (!['normal', 'protected'].includes(this.state(task))) throw new PolicyError('TASK_NOT_ACTIVE');
       if (!grant.request.operations.includes(operation)) throw new PolicyError('OPERATION_DENIED');
-      if (operation === 'fill' && (!credential || !grant.request.credentials.includes(credential))) throw new PolicyError('CREDENTIAL_DENIED');
-      if (operation === 'submit' && grant.remaining === 0) throw new PolicyError('SUBMISSION_LIMIT');
-      if (operation === 'submit') grant.remaining--;
-      this.#states.set(task, 'protected');
-      this.#record(task, operation === 'fill' ? 'fill_authorized' : 'submit_authorized', origin);
+
+      if (operation === 'fill') {
+        if (!credential || !grant.request.credentials.includes(credential)) throw new PolicyError('CREDENTIAL_DENIED');
+        const layer = this.#catalog.get(credential);
+        if (!layer) throw new PolicyError('CREDENTIAL_DENIED');
+        if (!grant.request.layers.includes(layer)) throw new PolicyError('CATEGORY_DENIED');
+      }
+
+      if (operation === 'submit') {
+        for (const cred of grant.request.credentials) {
+          const layer = this.#catalog.get(cred);
+          if (!layer) throw new PolicyError('CREDENTIAL_DENIED');
+          if (!grant.request.layers.includes(layer)) throw new PolicyError('CATEGORY_DENIED');
+        }
+        if (grant.remaining === 0) throw new PolicyError('SUBMISSION_LIMIT');
+      }
     } catch (error) {
-      this.#record(task, 'denied', origin, error instanceof PolicyError ? error.code : 'DENIED');
+      if (!this.#faulted) {
+        this.#record(task, 'denied', origin, error instanceof PolicyError ? error.code : 'DENIED');
+      }
       throw error;
     }
+
+    this.#record(task, operation === 'fill' ? 'fill_authorized' : 'submit_authorized', origin);
+
+    if (operation === 'submit') {
+      grant.remaining--;
+    }
+    this.#states.set(task, 'protected');
   }
 
   state(task: string): State { return this.#states.get(task) ?? 'stopped'; }
-  canObserve(task: string): boolean { return this.state(task) === 'normal'; }
+  canObserve(task: string): boolean {
+    if (this.#faulted) return false;
+    return this.state(task) === 'normal';
+  }
   finish(task: string, outcome: 'completed' | 'takeover'): void {
+    if (this.#faulted) throw new PolicyError('AUDIT_UNAVAILABLE');
     if (!['normal', 'protected'].includes(this.state(task))) throw new PolicyError('TASK_NOT_ACTIVE');
     this.#states.set(task, outcome);
     this.#record(task, outcome, '');
   }
   revoke(handle: string): void {
     const grant = this.#grants.get(handle);
-    if (grant) { this.#states.set(grant.request.task, 'stopped'); this.#record(grant.request.task, 'revoked', grant.request.origin); }
-    this.#grants.delete(handle);
+    if (grant) {
+      this.#states.set(grant.request.task, 'stopped');
+      this.#grants.delete(handle);
+      if (!this.#faulted) {
+        this.#record(grant.request.task, 'revoked', grant.request.origin);
+      }
+    }
   }
   stopAll(): void {
     this.#epoch++;
     this.#grants.clear();
     for (const task of this.#states.keys()) this.#states.set(task, 'stopped');
-    this.#record('', 'stopped_all', '');
+    if (!this.#faulted) {
+      this.#record('', 'stopped_all', '');
+    }
   }
   block(origin: string): void {
     const normalized = httpsOrigin(origin);
@@ -91,7 +200,43 @@ export class PolicyBroker {
     for (const [handle, grant] of this.#grants) if (grant.request.origin === normalized) this.revoke(handle);
   }
   audit(): readonly Audit[] { return Object.freeze(this.#events.map(event => Object.freeze({ ...event }))); }
+
   #record(task: string, event: string, origin: string, reason?: string): void {
-    this.#events.push(Object.freeze({ sequence: this.#events.length + 1, task, event, origin, ...(reason ? { reason } : {}) }));
+    if (this.#faulted) {
+      throw new PolicyError('AUDIT_UNAVAILABLE');
+    }
+    const auditEvent: Audit = Object.freeze({
+      sequence: this.#events.length + 1,
+      task,
+      event,
+      origin,
+      ...(reason ? { reason } : {}),
+    });
+    try {
+      const result: unknown = this.#sink(auditEvent);
+      if (result !== undefined) {
+        if (typeof result === 'object' && result !== null && 'then' in result) {
+          const thenFn = result.then;
+          if (typeof thenFn === 'function') {
+            Promise.resolve(result).catch(() => {});
+          }
+        }
+        this.#fault();
+        throw new PolicyError('AUDIT_UNAVAILABLE');
+      }
+    } catch {
+      this.#fault();
+      throw new PolicyError('AUDIT_UNAVAILABLE');
+    }
+    this.#events.push(auditEvent);
+  }
+
+  #fault(): void {
+    this.#faulted = true;
+    this.#epoch++;
+    this.#grants.clear();
+    for (const task of this.#states.keys()) {
+      this.#states.set(task, 'stopped');
+    }
   }
 }
