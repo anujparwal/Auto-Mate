@@ -24,7 +24,9 @@ export function resolveHostedOptions(args: readonly string[] = []): ParsedHosted
 
   const rawOrigin = process.env.AUTOMATE_HOSTED_PUBLIC_ORIGIN?.trim() ||
     (process.env.RAILWAY_PUBLIC_DOMAIN?.trim() ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN.trim()}` : undefined) ||
-    (process.env.RAILWAY_STATIC_URL?.trim() ? `https://${process.env.RAILWAY_STATIC_URL.trim()}` : undefined);
+    (process.env.RAILWAY_STATIC_URL?.trim() ? `https://${process.env.RAILWAY_STATIC_URL.trim()}` : undefined) ||
+    (process.env.RENDER_EXTERNAL_URL?.trim() ? process.env.RENDER_EXTERNAL_URL.trim() : undefined) ||
+    (process.env.SPACE_HOST?.trim() ? `https://${process.env.SPACE_HOST.trim()}` : undefined);
   const publicOrigin = rawOrigin && rawOrigin.length > 0 ? rawOrigin : undefined;
 
   let port: number | undefined;

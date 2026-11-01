@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: auto-mate
+    runtime: docker
+    plan: free
+    healthCheckPath: /login
+    envVars:
+      - key: PORT
+        value: 10000
