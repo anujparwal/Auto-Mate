@@ -105,6 +105,14 @@ The initial wish list also included configurable categories, destination blackli
 - Homepage source `cac95b24784d81aab2d0aa926f6f2290c2947afe` passed its own verification and deployment workflows. Fresh checks of the deployed repaired bundle proved the border moves again after OS reduced-motion/resize and manual pause/resume, with zero captured JavaScript exceptions. Browser tabs, temporary proof files/downloads/extractions, and the local preview server were cleaned up; installed authoring tools remain available.
 
 
+## Latest homepage playback request
+
+- The user now requests that the product video use the device's width, loop continuously, and have **no media controls**. This supersedes the homepage's original paused/native-player-controls presentation; earlier playback/fullscreen checks above describe that previous design.
+- The homepage video is edge-to-edge at viewport content width, preserves the complete 16:10 frame, autoplays muted and inline, and loops. The constrained 3D scroll wrapper and its unused source/attribution entry were removed. The existing site motion preference is labeled **Animations & film** and pauses/resumes both; OS reduced motion prevents automatic playback, including on initial load.
+- Local browser checks observed exact edge-to-edge bounds and no horizontal overflow at 360/390/768/1440 px, muted autoplay with controls disabled, time wrapping from approximately 35.5 seconds to the start while still playing, stable time during manual pause, and paused time zero after reloading with reduced motion enabled. Transcript/captions and simulation disclosures remain available.
+- Source-failure smoke caught a false unavailable banner during successful MP4 fallback and native `<source>` exhaustion leaving `video.error` null. The final handler distinguishes recoverable source failures from terminal media failure, clears status on actual playback, and handles exhaustion of the last source. After the repair, blocking WebM yielded muted, control-free MP4 autoplay/loop with no false notice; blocking both formats displayed the unavailable notice with a usable transcript and no captured JavaScript exceptions.
+- This changes only the separate homepage and usage/context documentation. Do not rebuild or alter the published application-only release merely to update the marketing film's layout or playback behavior.
+
 ## Current boundaries that must not regress
 
 - Models cannot access plaintext, ciphertext exports, vault listings, browser handles, owner pixels, or grant APIs. Approval authorizes trusted insertion, not secret delivery to AI.
