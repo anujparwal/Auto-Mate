@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { SYNTHETIC_VAULT_ROOT, WindowsAutofillVault, WindowsPasswordStore } from '../src/windows-vault';
 import type { CardRecord, LoginRecord } from '../src/autofill-contract';
 
@@ -214,5 +214,29 @@ windowsSuite('WindowsAutofillVault & WindowsPasswordStore (Native DPAPI Syntheti
     // Reading the legacy raw password as card fails with kind mismatch
     await expect(vault.read(origin, generated.reference, 'card')).rejects.toThrow('VAULT_RECORD_KIND_MISMATCH');
   });
+
+  test('synthetic native records roundtrip when Windows TMP and TEMP disagree', async () => {
+    const alternateTmp = join(tempDir, 'native-temp');
+    await mkdir(alternateTmp);
+    const record: LoginRecord = {
+      version: 1, kind: 'login', username: 'synthetic-user', password: 'synthetic-only-password',
+    };
+    const child = Bun.spawn([process.execPath, '-e', `
+      import { WindowsAutofillVault } from './src/windows-vault.ts';
+      const vault = new WindowsAutofillVault({ vaultPath: ${JSON.stringify(vaultPath)}, mode: 'synthetic' });
+      const origin = 'https://temp-roots.example.test';
+      await vault.save(origin, 'temp-root-record', ${JSON.stringify(record)});
+      console.log(JSON.stringify(await vault.read(origin, 'temp-root-record', 'login')));
+    `], {
+      cwd: join(import.meta.dir, '..'),
+      env: { ...process.env, TEMP: dirname(SYNTHETIC_VAULT_ROOT), TMP: alternateTmp },
+      stdout: 'pipe', stderr: 'pipe',
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
+    ]);
+    if (exitCode !== 0) throw new Error('Synthetic temp-root fixture failed: ' + stderr);
+    expect(JSON.parse(stdout)).toEqual(record);
+  }, 20000);
 
 });

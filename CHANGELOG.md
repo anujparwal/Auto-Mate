@@ -2,11 +2,12 @@
 
 ## Unreleased
 
+- Fixed a hosted-Windows portability failure caused by different `TEMP`/`TMP` precedence in Node/Bun and native Windows. Synthetic native children now share the adapter's isolated temporary base; normal-mode environment/authentication, path/origin guards, and entropy separation are unchanged. Added a real cross-process DPAPI regression that failed before and passed after the repair.
 - Added `use.md` for installation, website use, safe acceptance checks, supplied-API connection, and future deployment; consolidated project decisions, superseded requests, evidence, and remaining gates in `CONTEXT.MD`.
 - Added idempotent Windows x64 prerequisite setup with a digest-verified official Bun download when missing, frozen dependencies, Chromium installation, and optional developer tools, plus hosted Windows verification CI.
 - Prepared a static public download site, allowlisted Windows source ZIP/SHA-256 build, and manual-main-only Pages deployment. Each user's vault and protected browser stay on their own PC; no remote vault service, public deployment, signing, or repository-visibility change is implied.
 - Documented the existing user-supplied OpenAI-compatible API contract. Per the latest instruction, no Qwen/Colab model setup, weights, GPU provisioning, notebook, or hosting stack is included.
-- Verified existing-install setup/check-only behavior, all 170 tests/typecheck, native and browser DPAPI smoke, workflow syntax, public-site desktop/mobile rendering and download integrity, and a fresh extracted-package install/typecheck/smoke. No actual provider API, successful Hello, fresh-machine Bun bootstrap, hosted CI run, or public deployment is claimed by those local checks.
+- Verified existing-install setup/check-only behavior, all 171 tests/typecheck, native and browser DPAPI smoke, workflow syntax, public-site desktop/mobile rendering and download integrity, and a fresh extracted-package install/typecheck/smoke. No actual provider API, successful Hello, fresh-machine Bun bootstrap, hosted CI run, or public deployment is claimed by those local checks.
 
 - Fixed Stop/Lock racing with replacement-website teardown: a cancelled inspection cannot open a new protected page after the previous context finishes closing.
 - Made pending inspection setup cancellable without waiting for the setup hook, and awaited the original abort-triggered context closure before reporting cancellation. Unsupported cardholder/number/combined-expiry dropdowns are now refused during discovery rather than offered for approval and rejected during filling; numeric month/year dropdown support is unchanged.

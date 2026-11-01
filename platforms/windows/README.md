@@ -235,6 +235,8 @@ Authentication denial instead returns exit 1 with `{"success":false,"error":"VAU
 
 `-Synthetic` exists only for controlled test/demo data. It requires an explicit vault path below a child directory of `%TEMP%\AutoMate-Synthetic\` and `.test` destination origins. It never authenticates a production vault operation.
 
+The TypeScript synthetic adapter supplies its chosen temporary base as both `TEMP` and `TMP` to the native child process. Node/Bun and Windows native temp lookup use different precedence when those variables disagree (as on some hosted runners). This keeps both sides in the same isolated `AutoMate-Synthetic` root; it does not relax path/origin guards, change entropy, or alter normal-mode authentication/environment.
+
 Synthetic v2 entropy is `SHA-256("AutoMate:Synthetic:Vault:Entropy:v2")`; synthetic v1 fixture entropy is `SHA-256("AutoMate:Synthetic:Vault:OriginEntropy:v1:" + origin)`. These differ from normal vault entropy. Copying a normal v1 or v2 file into the synthetic directory does not make it decryptable through the unauthenticated test path. Successful synthetic broker responses are marked `"authentication":"synthetic-isolated"`, never `"windows-hello"`.
 
 The preview and browser smoke explicitly select this isolated mode. Their success proves synthetic persistence and execution, not a successful biometric/PIN gesture or production credential use. Never enter real credentials into a synthetic fixture.

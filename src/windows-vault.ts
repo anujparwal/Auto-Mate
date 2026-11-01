@@ -1,4 +1,4 @@
-import { isAbsolute, relative, resolve, sep, join } from 'node:path';
+import { isAbsolute, relative, resolve, sep, join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import type { PasswordStore } from './workflow';
@@ -80,7 +80,11 @@ async function invokeNativeBroker(options: BrokerOptions, payload: Record<string
   if (options.vaultPath) args.push('-VaultPath', resolve(options.vaultPath));
   if (options.mode === 'synthetic') args.push('-Synthetic');
 
-  const child = Bun.spawn(args, { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
+  // Windows native temp lookup prefers TMP; node:os prefers TEMP. Keep the
+  // synthetic child inside the same isolated root without changing normal mode.
+  const tempBase = options.mode === 'synthetic' ? dirname(SYNTHETIC_VAULT_ROOT) : undefined;
+  const env = tempBase ? { ...process.env, TEMP: tempBase, TMP: tempBase } : undefined;
+  const child = Bun.spawn(args, { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', env });
   try {
     child.stdin.write(JSON.stringify(payload));
     child.stdin.end();
