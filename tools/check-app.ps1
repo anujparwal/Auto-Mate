@@ -36,7 +36,7 @@ try {
             $relative -match '^ui/owner-preview\.(html|js)$' -or
             $relative -match '^tools/(preview|start)\.ts$' -or
             $relative -match '^src/(owner-preview|task-planner)\.ts$' -or
-            $relative -match '(^|/)(CONTEXT\.MD|\.env(?:\..*)?|vault(?:\.json)?|\.git|\.local|accounts\.json|cookies\.json)(/|$)' -or
+            $relative -match '(^|/)(CONTEXT\.MD|\.env(?:\..*)?|vault(?:\.json)?|\.git|\.local|accounts\.json|cookies\.json|model-config\.json)(/|$)' -or
             $relative -match '(^|/)(demo.*)(/|$)' -or
             $relative -match '\.(vault(?:\.json)?|pem|pfx|p12|key|keystore|jks|sqlite|db)$') {
             throw ('Forbidden application release content: ' + $relative)
@@ -60,6 +60,12 @@ try {
         'src/hosted-accounts.ts',
         'src/hosted-egress.ts',
         'src/website-actions.ts',
+        'src/workspace-store.ts',
+        'src/agent-engine.ts',
+        'src/agent-browser.ts',
+        'src/agent-types.ts',
+        'src/agent-settings.ts',
+        'platforms/windows/workspace.ps1',
         'RELEASE-MANIFEST.json'
     )
     foreach ($req in $requiredEntries) {
@@ -68,39 +74,8 @@ try {
         }
     }
 
-    $modelEntry = $zip.GetEntry($name + '/model-config.json')
-    if ($null -ne $modelEntry) {
-        $reader = New-Object System.IO.StreamReader($modelEntry.Open(), [Text.Encoding]::UTF8)
-        $modelContent = $reader.ReadToEnd()
-        $reader.Dispose()
-        $modelJson = $modelContent | ConvertFrom-Json
-        $allowedKeys = @('mode', 'endpoint', 'model')
-        foreach ($prop in $modelJson.PSObject.Properties) {
-            if ($allowedKeys -notcontains $prop.Name) {
-                throw ('Forbidden or unexpected property in bundled model-config.json: ' + $prop.Name)
-            }
-            if ($prop.Name -match '(key|secret|token|password|auth|credential)') {
-                throw ('Secret-like property in bundled model-config.json: ' + $prop.Name)
-            }
-        }
-        if ($modelJson.endpoint) {
-            $testUri = $null
-            if (-not [Uri]::TryCreate([string]$modelJson.endpoint, [UriKind]::Absolute, [ref]$testUri)) {
-                throw ('Bundled model-config.json endpoint is not a valid absolute URI: ' + $modelJson.endpoint)
-            }
-            if (-not [string]::IsNullOrEmpty($testUri.UserInfo)) {
-                throw 'Bundled model-config.json endpoint must not contain embedded userinfo/credentials.'
-            }
-            if (-not [string]::IsNullOrEmpty($testUri.Query)) {
-                throw 'Bundled model-config.json endpoint must not contain query parameters.'
-            }
-            if (-not [string]::IsNullOrEmpty($testUri.Fragment)) {
-                throw 'Bundled model-config.json endpoint must not contain URL fragments.'
-            }
-            if ($modelJson.mode -eq 'cloud' -and $testUri.Scheme -ne 'https') {
-                throw 'Bundled model-config.json cloud endpoint must use https.'
-            }
-        }
+    if ($entryPaths.Contains('model-config.json')) {
+        throw 'Forbidden obsolete model-config.json present in application archive.'
     }
 } finally { $zip.Dispose() }
 
@@ -171,7 +146,6 @@ const testDataDir = process.env.TEST_HOSTED_DATA_DIR!;
 const server = await openHostedServer({
   port: 0,
   dataDirectory: testDataDir,
-  registrationKey: 'test-verification-key-12345678',
 });
 
 try {
@@ -179,28 +153,44 @@ try {
   const loopbackOrigin = `http://127.0.0.1:${server.port}`;
   server.activatePublicOrigin(loopbackOrigin);
 
-  // 3. Test unauthenticated /login route serves hosted-login.html asset
+  // 3. Test unauthenticated / redirects to /login (302)
+  const resRoot = await fetch(`${loopbackOrigin}/`, {
+    headers: { Host: `127.0.0.1:${server.port}` },
+    redirect: 'manual',
+  });
+  if (resRoot.status !== 302 || resRoot.headers.get('location') !== '/login') {
+    throw new Error(`Expected 302 redirect from / to /login, got ${resRoot.status}`);
+  }
+
+  // 4. Test unauthenticated /login route serves hosted-login.html asset
   const resLogin = await fetch(`${loopbackOrigin}/login`, {
     headers: { Host: `127.0.0.1:${server.port}` },
   });
   if (resLogin.status !== 200) {
     throw new Error(`Expected 200 from /login, got ${resLogin.status}`);
   }
-  const loginHtml = await resLogin.text();
-  if (!loginHtml.includes('Auto-Mate')) {
-    throw new Error('Hosted login page does not contain expected Auto-Mate branding');
+  const loginType = resLogin.headers.get('content-type') ?? '';
+  if (!loginType.includes('text/html')) {
+    throw new Error(`Expected text/html from /login, got ${loginType}`);
   }
 
-  // 4. Test static UI asset /hosted-login.js serves script
+  // 5. Test static UI assets /hosted-login.js and /owner-preview.css serve scripts/styles
   const resJs = await fetch(`${loopbackOrigin}/hosted-login.js`, {
     headers: { Host: `127.0.0.1:${server.port}` },
   });
-  if (resJs.status !== 200) {
-    throw new Error(`Expected 200 from /hosted-login.js, got ${resJs.status}`);
+  if (resJs.status !== 200 || !(resJs.headers.get('content-type') ?? '').includes('javascript')) {
+    throw new Error(`Expected 200 javascript from /hosted-login.js, got ${resJs.status}`);
   }
 
-  // 5. Test registration rejection on bad registration key
-  const resBadReg = await fetch(`${loopbackOrigin}/api/register`, {
+  const resCss = await fetch(`${loopbackOrigin}/owner-preview.css`, {
+    headers: { Host: `127.0.0.1:${server.port}` },
+  });
+  if (resCss.status !== 200 || !(resCss.headers.get('content-type') ?? '').includes('css')) {
+    throw new Error(`Expected 200 css from /owner-preview.css, got ${resCss.status}`);
+  }
+
+  // 6. Test registration with username and key (no operator registration key required)
+  const resReg = await fetch(`${loopbackOrigin}/api/register`, {
     method: 'POST',
     headers: {
       Host: `127.0.0.1:${server.port}`,
@@ -210,18 +200,55 @@ try {
     body: JSON.stringify({
       username: 'testuser',
       key: 'correct-horse-battery-staple-sample',
-      registrationKey: 'wrong-key-0000000000000000',
     }),
   });
-  if (resBadReg.status !== 403) {
-    throw new Error(`Expected 403 from bad registration key, got ${resBadReg.status}`);
+  if (resReg.status !== 200) {
+    const errText = await resReg.text();
+    throw new Error(`Expected 200 from registration, got ${resReg.status}: ${errText}`);
   }
-  const badRegJson = await resBadReg.json();
-  if (badRegJson.error !== 'INVALID_REGISTRATION_KEY') {
-    throw new Error(`Expected INVALID_REGISTRATION_KEY error code, got ${badRegJson.error}`);
+  const setCookie = resReg.headers.get('set-cookie');
+  if (!setCookie || !setCookie.includes('automate_session=')) {
+    throw new Error('Registration did not set session cookie');
+  }
+  const sessionCookie = setCookie.split(';')[0];
+
+  // 7. Test consumer-facing authenticated session endpoint
+  const resSession = await fetch(`${loopbackOrigin}/api/session`, {
+    headers: {
+      Host: `127.0.0.1:${server.port}`,
+      Cookie: sessionCookie,
+    },
+  });
+  if (resSession.status !== 200) {
+    throw new Error(`Expected 200 from /api/session, got ${resSession.status}`);
+  }
+  const sessionData = await resSession.json();
+  if (sessionData.username !== 'testuser' || typeof sessionData.csrfToken !== 'string') {
+    throw new Error('Invalid session response data');
   }
 
-  console.log('PASS: extracted bundled hosted backend successfully exercised on loopback (local port, hosted assets, auth guards).');
+  // 8. Test consumer-facing authenticated workspace UI assets (/ and /autofill.js)
+  const resWorkspace = await fetch(`${loopbackOrigin}/`, {
+    headers: {
+      Host: `127.0.0.1:${server.port}`,
+      Cookie: sessionCookie,
+    },
+  });
+  if (resWorkspace.status !== 200 || !(resWorkspace.headers.get('content-type') ?? '').includes('text/html')) {
+    throw new Error(`Expected 200 text/html from workspace /, got ${resWorkspace.status}`);
+  }
+
+  const resWorkspaceJs = await fetch(`${loopbackOrigin}/autofill.js`, {
+    headers: {
+      Host: `127.0.0.1:${server.port}`,
+      Cookie: sessionCookie,
+    },
+  });
+  if (resWorkspaceJs.status !== 200 || !(resWorkspaceJs.headers.get('content-type') ?? '').includes('javascript')) {
+    throw new Error(`Expected 200 javascript from /autofill.js, got ${resWorkspaceJs.status}`);
+  }
+
+  console.log('PASS: extracted bundled hosted backend successfully exercised on loopback (local port, hosted assets, auth guards, workspace paths).');
 } finally {
   await server.close();
 }

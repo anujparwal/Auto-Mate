@@ -6,10 +6,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { chromium, type Browser, type Page } from 'playwright';
 import { openHostedEgressProxy, HOSTED_CHROMIUM_ARGS, type HostedEgressProxy } from './hosted-egress';
 import { openAutofillApp, type AutofillApp, type AutofillAppOptions } from './autofill-owner';
-import type { AutofillVault } from './autofill-contract';
-import type { InformationVault } from './information-contract';
 import type { SessionProtection } from './windows-session';
-import type { InformationPlanningClient } from './information-flow';
 import { HostedAccounts, HostedAccountSession } from './hosted-accounts';
 
 export { HostedAccountSession };
@@ -39,7 +36,6 @@ export interface HostedServerOptions {
   disconnectGraceMs?: number;
   clock?: () => number;
   prepareWebsite?: (page: Page) => Promise<void>;
-  informationPlanner?: InformationPlanningClient;
   appFactory?: (options: AutofillAppOptions) => Promise<AutofillApp>;
 }
 
@@ -215,7 +211,7 @@ export async function openHostedServer(options: HostedServerOptions): Promise<Ho
   async function stopDisconnected(session: ActiveSession): Promise<void> {
     if (session.disconnected || clock() - session.lastPollAt <= disconnectGraceMs) return;
     session.disconnected = true;
-    try { await session.app.command({ action: 'stop', revision: 0 }); }
+    try { await session.app.command({ action: 'workspace-stop' }); }
     catch { await session.close(); }
   }
 
@@ -268,47 +264,18 @@ export async function openHostedServer(options: HostedServerOptions): Promise<Ho
       sequence: 0, stateSequence: 0, frameSequence: 0, lastPollAt: clock(), disconnected: false,
       isClosed: false,
       broadcast(update: unknown) {
-        if (session.isClosed) return;
-        if (!update || typeof update !== 'object') return;
-        if ('kind' in update && update.kind === 'state') {
-          const rawState = 'state' in update && update.state && typeof update.state === 'object' ? update.state : undefined;
-          const rawPrev = session.latestState && typeof session.latestState === 'object' && 'state' in session.latestState && session.latestState.state && typeof session.latestState.state === 'object' ? session.latestState.state : undefined;
-
-          const phase = rawState && 'phase' in rawState && typeof rawState.phase === 'string' ? rawState.phase : undefined;
-          const isInactive = phase === 'stopped' || phase === 'failed' || phase === 'idle' || phase === 'completed' || phase === 'denied' || phase === 'takeover';
-
-          const nextRevision = rawState && 'revision' in rawState && typeof rawState.revision === 'number' ? rawState.revision : undefined;
-          const prevRevision = rawPrev && 'revision' in rawPrev && typeof rawPrev.revision === 'number' ? rawPrev.revision : undefined;
-          const frameRevision = session.latestFrame && typeof session.latestFrame === 'object' && 'revision' in session.latestFrame && typeof session.latestFrame.revision === 'number' ? session.latestFrame.revision : undefined;
-
-          const revisionChanged = nextRevision !== undefined && (
-            (prevRevision !== undefined && nextRevision !== prevRevision) ||
-            (frameRevision !== undefined && frameRevision !== nextRevision)
-          );
-
-          if (isInactive || revisionChanged) {
-            session.latestFrame = undefined;
-            session.frameSequence = 0;
-          }
-
+        if (session.isClosed || !update || typeof update !== 'object' || !('kind' in update)) return;
+        if (update.kind === 'workspace') {
           session.latestState = update;
           session.stateSequence = ++session.sequence;
-        } else if ('kind' in update && update.kind === 'frame') {
-          const rawState = session.latestState && typeof session.latestState === 'object' && 'state' in session.latestState && session.latestState.state && typeof session.latestState.state === 'object' ? session.latestState.state : undefined;
-          const phase = rawState && 'phase' in rawState && typeof rawState.phase === 'string' ? rawState.phase : undefined;
-          const isInactive = phase === 'stopped' || phase === 'failed' || phase === 'idle' || phase === 'completed' || phase === 'denied' || phase === 'takeover';
-
-          const currentRevision = rawState && 'revision' in rawState && typeof rawState.revision === 'number' ? rawState.revision : undefined;
-          const frameRevision = 'revision' in update && typeof update.revision === 'number' ? update.revision : undefined;
-          const revisionMismatch = currentRevision !== undefined && frameRevision !== undefined && frameRevision !== currentRevision;
-
-          if (isInactive || revisionMismatch) {
+          const state = 'state' in update && update.state && typeof update.state === 'object' ? update.state : undefined;
+          if (state && 'phase' in state && (state.phase === 'stopped' || state.phase === 'failed')) {
             session.latestFrame = undefined;
             session.frameSequence = 0;
-          } else {
-            session.latestFrame = update;
-            session.frameSequence = ++session.sequence;
           }
+        } else if (update.kind === 'workspace-frame') {
+          session.latestFrame = update;
+          session.frameSequence = ++session.sequence;
         }
       },
       close() {
@@ -327,9 +294,10 @@ export async function openHostedServer(options: HostedServerOptions): Promise<Ho
           if (failed) throw new Error('HOSTED_SESSION_CLEANUP_FAILED');
         })();
         closingSessions.add(closingSession);
-        closingSession.finally(() => {
-          closingSessions.delete(closingSession!);
-        });
+        void closingSession.then(
+          () => closingSessions.delete(closingSession!),
+          () => closingSessions.delete(closingSession!),
+        );
         closingSession.catch(reportCleanupFailure);
         return closingSession;
       },
@@ -338,12 +306,12 @@ export async function openHostedServer(options: HostedServerOptions): Promise<Ho
     try {
       appInstance = await appFactory({
         viewer: sharedViewer,
-        vault: accountSession.vault,
         informationVault: accountSession.informationVault,
+        workspaceStore: accountSession.workspaceStore,
+        modelProxy: egressProxy ? `http://${encodeURIComponent(egressProxy.username)}:${encodeURIComponent(egressProxy.password)}@127.0.0.1:${egressProxy.port}` : undefined,
         auditDirectory: userAuditDir,
         protection,
         prepareWebsite: options.prepareWebsite,
-        informationPlanner: options.informationPlanner,
         authenticationMode: 'user-key',
         onUpdate: (update: unknown) => {
           session.broadcast(update);
@@ -401,6 +369,12 @@ export async function openHostedServer(options: HostedServerOptions): Promise<Ho
 
   async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (isClosing) { res.writeHead(503); res.end(); return; }
+    // Platform probes disclose no account state and cannot bypass app/auth host validation.
+    if (req.method === 'GET' && req.url === '/healthz') {
+      res.writeHead(activePublicOrigin ? 200 : 503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      res.end(JSON.stringify({ status: activePublicOrigin ? 'ready' : 'initializing' }));
+      return;
+    }
     // 1. Two-phase bootstrap check: reject auth/app requests if tunnel origin is not activated yet
     if (!activePublicOrigin) {
       res.writeHead(503, {
@@ -423,12 +397,9 @@ export async function openHostedServer(options: HostedServerOptions): Promise<Ho
     const boundAddress = server.address() as net.AddressInfo | null;
     const boundPortStr = boundAddress ? String(boundAddress.port) : '';
 
-    const forwardedHost = req.headers['x-forwarded-host'];
-    const forwardedHostStr = typeof forwardedHost === 'string' ? forwardedHost.split(',')[0]?.trim().toLowerCase() : undefined;
 
     const hostMatches =
       reqHost === expectedHost ||
-      forwardedHostStr === expectedHost ||
       (isLoopbackSmoke &&
         (reqHost === `127.0.0.1:${boundPortStr}` || reqHost === `localhost:${boundPortStr}`));
 

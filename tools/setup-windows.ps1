@@ -86,4 +86,4 @@ try {
     }
 } finally { Pop-Location }
 Write-Host 'Prerequisites available. Run bun run typecheck, bun test, and bun run smoke for runtime verification.'
-Write-Host 'Use bun start for the local owner website. Windows Hello success and workstation lifecycle still require manual hardware checks.'
+Write-Host 'Use bun start for the local agent workspace. Windows Hello success and workstation lifecycle still require manual hardware checks.'

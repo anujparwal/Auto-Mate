@@ -166,18 +166,20 @@ export async function runHosted(args: readonly string[] = []): Promise<void> {
     console.log(`Local Bound Port:    ${server.port}`);
     console.log(`Data Directory:      ${options.dataDirectory}`);
     if (options.registrationKey) {
-      console.log(`Registration Key:    ${options.registrationKey}`);
+      console.log('Registration:        Operator-configured invitation required');
     } else {
       console.log('Registration:        Open (No operator code required)');
     }
     console.log('--------------------------------------------------------------------------------');
     console.log('[TRUST & SECURITY NOTICE]');
-    console.log('• Invite-Only: Remote users must register using the registration key above.');
+    console.log(options.registrationKey ? '• Registration requires the operator-configured invitation.' : '• Open registration: choose a username and a strong account key; no operator code.');
     console.log('• Host Operator Trust: The host operator has full authority on this machine.');
     console.log('  Active sessions and autofill actions are visible to the operator while signed in.');
     console.log('  Hosted sessions are NOT zero-knowledge from this host.');
-    console.log('• AI Model Privacy: AI models NEVER receive account keys, passwords, or vault secrets.');
-    console.log('• Execution Guard: Only remote autofill and explicitly approved clicks will execute.');
+    console.log('• Model inputs: your chat, enabled memory, notes, variable metadata, and redacted page text.');
+    console.log('  Vault values and preview images are not provided as model inputs. Never paste secrets in chat.');
+    console.log('  Redaction is best effort: malicious websites can transform private values to evade matching.');
+    console.log('• Execution Guard: private fills and sensitive actions require user authorization.');
     console.log('================================================================================\n');
     console.log('Auto-Mate hosted service is running. Press Ctrl+C to stop.');
 

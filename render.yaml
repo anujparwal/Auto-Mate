@@ -3,7 +3,7 @@ services:
     name: auto-mate
     runtime: docker
     plan: free
-    healthCheckPath: /login
+    healthCheckPath: /healthz
     envVars:
       - key: PORT
         value: 10000

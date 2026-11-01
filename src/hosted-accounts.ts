@@ -29,7 +29,9 @@ import type {
 import { PROFILE_ORIGIN_NORMAL } from './information-vault';
 import { httpsOrigin, PolicyError } from './policy';
 import { decodeVaultRecord, parseVaultRecord, serializeVaultRecord } from './vault-record';
-
+import type { AgentNote, AgentWorkspaceSettings, WorkspaceStore, WorkspaceStoredData } from './agent-types';
+import { validateWorkspaceSettings } from './agent-settings';
+import { validateNotes } from './workspace-store';
 function scryptAsync(
   password: Buffer,
   salt: Buffer,
@@ -240,6 +242,141 @@ function decryptVault(fileBuffer: Buffer, encKey: Buffer): VaultPayload {
     throw new PolicyError('VAULT_CORRUPTED');
   }
 }
+interface WorkspacePayload {
+  readonly version: 1;
+  readonly settings: AgentWorkspaceSettings;
+  readonly notes: AgentNote[];
+}
+
+function encryptWorkspace(data: WorkspacePayload, encKey: Buffer): Buffer {
+  const workspaceSubkey = createHmac('sha256', encKey)
+    .update('auto-mate:hosted-account:workspace-encryption:v1')
+    .digest();
+  try {
+    const nonce = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', workspaceSubkey, nonce);
+    const plaintext = Buffer.from(JSON.stringify(data), 'utf-8');
+    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+
+    const envelope: EncryptedEnvelope = {
+      version: 1,
+      iv: nonce.toString('hex'),
+      authTag: authTag.toString('hex'),
+      ciphertext: ciphertext.toString('base64'),
+    };
+    return Buffer.from(JSON.stringify(envelope), 'utf-8');
+  } finally {
+    workspaceSubkey.fill(0);
+  }
+}
+
+function decryptWorkspace(fileBuffer: Buffer, encKey: Buffer): WorkspacePayload {
+  let envelope: EncryptedEnvelope;
+  try {
+    const raw = JSON.parse(fileBuffer.toString('utf-8'));
+    if (
+      !raw ||
+      typeof raw !== 'object' ||
+      raw.version !== 1 ||
+      typeof raw.iv !== 'string' ||
+      typeof raw.authTag !== 'string' ||
+      typeof raw.ciphertext !== 'string'
+    ) {
+      throw new PolicyError('WORKSPACE_CORRUPTED');
+    }
+    envelope = raw;
+  } catch (err) {
+    if (err instanceof PolicyError) throw err;
+    throw new PolicyError('WORKSPACE_CORRUPTED');
+  }
+
+  const nonce = Buffer.from(envelope.iv, 'hex');
+  const authTag = Buffer.from(envelope.authTag, 'hex');
+  const ciphertext = Buffer.from(envelope.ciphertext, 'base64');
+
+  if (nonce.length !== 12 || authTag.length !== 16) {
+    throw new PolicyError('WORKSPACE_CORRUPTED');
+  }
+
+  const workspaceSubkey = createHmac('sha256', encKey)
+    .update('auto-mate:hosted-account:workspace-encryption:v1')
+    .digest();
+
+  let decrypted: Buffer;
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', workspaceSubkey, nonce);
+    decipher.setAuthTag(authTag);
+    decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  } catch {
+    throw new PolicyError('WORKSPACE_CORRUPTED');
+  } finally {
+    workspaceSubkey.fill(0);
+  }
+
+  try {
+    const payload = JSON.parse(decrypted.toString('utf-8'));
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      payload.version !== 1 ||
+      !payload.settings ||
+      !Array.isArray(payload.notes)
+    ) {
+      throw new PolicyError('WORKSPACE_CORRUPTED');
+    }
+    const settings = validateWorkspaceSettings(payload.settings, undefined, true);
+    const notes = validateNotes(payload.notes);
+    return { version: 1, settings, notes };
+  } catch (err) {
+    if (err instanceof PolicyError) throw err;
+    throw new PolicyError('WORKSPACE_CORRUPTED');
+  }
+}
+
+class HostedWorkspaceStore implements WorkspaceStore {
+  readonly #session: HostedAccountSession;
+
+  constructor(session: HostedAccountSession) {
+    this.#session = session;
+  }
+
+  async load(): Promise<WorkspaceStoredData | null> {
+    this.#session.assertActive();
+    return await this.#session.runInFlight(async () => {
+      this.#session.assertActive();
+      const mutex = this.#session.getMutex();
+      return await mutex.runExclusive(async () => {
+        this.#session.assertActive();
+        return await this.#session.readWorkspaceUnderLock();
+      });
+    });
+  }
+
+  async save(data: WorkspaceStoredData): Promise<void> {
+    this.#session.assertActive();
+    if (!data || typeof data !== 'object') {
+      throw new PolicyError('INVALID_WORKSPACE_DATA');
+    }
+    const settings = validateWorkspaceSettings(data.settings, undefined, true);
+    const notes = validateNotes(data.notes);
+
+    await this.#session.runInFlight(async () => {
+      this.#session.assertActive();
+      const mutex = this.#session.getMutex();
+      await mutex.runExclusive(async () => {
+        this.#session.assertActive();
+        await this.#session.writeWorkspaceUnderLock({
+          version: 1,
+          settings,
+          notes,
+        });
+        this.#session.assertActive();
+      });
+    });
+  }
+}
+
 
 interface AccountMetadata {
   readonly accountId: string;
@@ -834,8 +971,10 @@ export class HostedAccountSession {
   readonly #username: string;
   readonly #vault: AutofillVault;
   readonly #informationVault: InformationVault;
+  readonly #workspaceStore: WorkspaceStore;
   readonly #accountMutex: AsyncMutex;
   readonly #vaultFilePath: string;
+  readonly #workspaceFilePath: string;
   #encKeyBuffer: Buffer | null;
   #closed = false;
   readonly #inFlight = new Set<Promise<unknown>>();
@@ -846,15 +985,19 @@ export class HostedAccountSession {
     encKeyBuffer: Buffer,
     vaultFilePath: string,
     accountMutex: AsyncMutex,
+    workspaceFilePath?: string,
   ) {
     this.#accountId = accountId;
     this.#username = username;
     this.#encKeyBuffer = encKeyBuffer;
     this.#vaultFilePath = vaultFilePath;
+    this.#workspaceFilePath =
+      workspaceFilePath ?? join(dirname(vaultFilePath), `${accountId}.workspace`);
     this.#accountMutex = accountMutex;
 
     this.#vault = new HostedAutofillVault(this);
     this.#informationVault = new HostedInformationVault(this);
+    this.#workspaceStore = new HostedWorkspaceStore(this);
   }
 
   get accountId(): string {
@@ -872,6 +1015,10 @@ export class HostedAccountSession {
   get informationVault(): InformationVault {
     return this.#informationVault;
   }
+  get workspaceStore(): WorkspaceStore {
+    return this.#workspaceStore;
+  }
+
 
   assertActive(): void {
     if (this.#closed || !this.#encKeyBuffer) {
@@ -941,6 +1088,39 @@ export class HostedAccountSession {
     await writeAtomic(this.#vaultFilePath, encrypted);
     this.assertActive();
   }
+  async readWorkspaceUnderLock(): Promise<WorkspaceStoredData | null> {
+    this.assertActive();
+    if (!this.#encKeyBuffer) {
+      throw new PolicyError('SESSION_CLOSED');
+    }
+    let raw: Buffer;
+    try {
+      raw = await readFile(this.#workspaceFilePath);
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
+        return null;
+      }
+      throw new PolicyError('WORKSPACE_CORRUPTED');
+    }
+    this.assertActive();
+    if (!this.#encKeyBuffer) {
+      throw new PolicyError('SESSION_CLOSED');
+    }
+    const payload = decryptWorkspace(raw, this.#encKeyBuffer);
+    return { settings: payload.settings, notes: payload.notes };
+  }
+
+  async writeWorkspaceUnderLock(payload: WorkspacePayload): Promise<void> {
+    this.assertActive();
+    if (!this.#encKeyBuffer) {
+      throw new PolicyError('SESSION_CLOSED');
+    }
+    const encrypted = encryptWorkspace(payload, this.#encKeyBuffer);
+    this.assertActive();
+    await writeAtomic(this.#workspaceFilePath, encrypted);
+    this.assertActive();
+  }
+
 }
 
 export class HostedAccounts {
@@ -1071,7 +1251,8 @@ export class HostedAccounts {
 
       // 8. Return already-unlocked session to avoid repeating KDF
       const mutex = this.getAccountMutex(accountId);
-      return new HostedAccountSession(accountId, validUser, encSubkey, vaultFilePath, mutex);
+      const workspaceFilePath = join(this.#directory, `${accountId}.workspace`);
+      return new HostedAccountSession(accountId, validUser, encSubkey, vaultFilePath, mutex, workspaceFilePath);
     });
   }
 
@@ -1108,6 +1289,7 @@ export class HostedAccounts {
       throw new PolicyError('VAULT_CORRUPTED');
     }
 
-    return new HostedAccountSession(accountMeta.accountId, validUser, encSubkey, vaultFilePath, mutex);
+    const workspaceFilePath = join(this.#directory, `${accountMeta.accountId}.workspace`);
+    return new HostedAccountSession(accountMeta.accountId, validUser, encSubkey, vaultFilePath, mutex, workspaceFilePath);
   }
 }

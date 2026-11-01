@@ -1,629 +1,1244 @@
 'use strict';
 (() => {
   const byId = id => document.getElementById(id);
-  const make = (tag, value, className) => {
-    const node = document.createElement(tag); node.textContent = value;
-    if (className) node.className = className;
-    return node;
-  };
-  const activePhases = new Set(['review', 'filling', 'filled', 'acting']);
-  const secretInputs = ['save-username', 'save-password', 'save-cardholder', 'save-card-number', 'save-month', 'save-year', 'save-var-val'];
-  const phases = { idle: 'Ready', inspecting: 'Inspecting website', review: 'Awaiting approval',
-    filling: 'Authenticating / filling', filled: 'Filled · Review protected browser', acting: 'Executing approved click', stopped: 'Stopped', failed: 'Stopped · Owner attention required' };
-  let state = { phase: 'idle', busy: false, fields: [], revision: 0, vault: { locked: true, entries: [] } };
-  let revision = -1;
-  let fieldsSignature = '';
-  let recordsSignature = '';
-  let localVaultLock = false;
-  const selected = new Set();
-  let generation = 0;
-  let committedImage = '';
-  let annotationSignature = '';
-  let pendingImage = null;
-  let pendingFrame = null;
-  let pendingRevision = -1;
-  let dialogRequestId = '';
-  let catalogSignature = '';
-  let actionsSignature = '';
-  let localPermission = null;
-  let permissionSignature = '';
+  const isNative = typeof window.autoMateAutofill === 'function';
+
   let csrfToken = '';
-  let polling = false;
-  let pollTimer;
-  let pollController;
   let updateSequence = 0;
-  let pollGeneration = 0;
-  let connectionLost = false;
-  const hostedTransport = typeof window.autoMateAutofill !== 'function';
+  let pollTimer = null;
+  let isPolling = false;
+  let isBusy = false;
+  let clearApiKeyRequested = false;
+  let localSettingsDraft = null;
+  let connectionReady = isNative;
+  let pollController;
+  let pollEpoch = 0;
+  let frameGeneration = 0;
+  let activeRequestId = '';
+  let commandCount = 0;
 
-  function originInput() {
+  let localState = {
+    phase: 'idle',
+    messages: [],
+    notes: [],
+    settings: {
+      model: { mode: 'cloud', preset: 'openai', endpoint: 'https://api.openai.com/v1', model: 'gpt-4o', keyConfigured: false },
+      navigation: { mode: 'blacklist', domains: [] },
+      memory: { enabled: false, content: '' },
+      groups: []
+    },
+    variables: [],
+    grants: [],
+    origin: '',
+    error: ''
+  };
+
+  const PROVIDER_PRESETS = {
+    openai: {
+      mode: 'cloud',
+      endpoint: 'https://api.openai.com/v1',
+      models: ['gpt-4o', 'gpt-4o-mini', 'o3-mini', 'gpt-4-turbo']
+    },
+    groq: {
+      mode: 'cloud',
+      endpoint: 'https://api.groq.com/openai/v1',
+      models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768']
+    },
+    openrouter: {
+      mode: 'cloud',
+      endpoint: 'https://openrouter.ai/api/v1',
+      models: ['anthropic/claude-3.5-sonnet', 'openai/gpt-4o', 'meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-chat']
+    },
+    ollama: {
+      mode: 'local',
+      endpoint: 'http://localhost:11434/v1',
+      models: ['llama3.2', 'llama3.1', 'qwen2.5:7b', 'mistral', 'deepseek-r1']
+    },
+    lmstudio: {
+      mode: 'local',
+      endpoint: 'http://localhost:1234/v1',
+      models: []
+    },
+    custom: {
+      mode: 'cloud',
+      endpoint: '',
+      models: []
+    }
+  };
+
+  // Error Banner handling
+  function showError(msg) {
+    const banner = byId('global-error-banner');
+    const text = byId('global-error-text');
+    if (banner && text) {
+      if (msg) {
+        text.textContent = msg;
+        banner.hidden = false;
+      } else {
+        banner.hidden = true;
+        text.textContent = '';
+      }
+    }
+  }
+
+  // Unified Command Transport
+  async function sendCommand(command) {
+    commandCount++; isBusy = true;
+    updateControls();
+    showError('');
     try {
-      const url = new URL(byId('vault-origin').value);
-      if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) return null;
-      return url.origin;
-    } catch { return null; }
-  }
-  function canReview() {
-    return state.phase === 'review' && !state.busy && byId('website-url').value.trim() === state.url && byId('record-kind').value === state.kind;
-  }
-  function infoFieldsReady() {
-    if (state.kind !== 'information') return true;
-    if (state.information?.request) return false;
-    if (!state.information?.planned) return false;
-    for (const fieldId of selected) {
-      const mapping = state.information.mappings?.find(m => m.fieldId === fieldId);
-      if (!mapping || (!mapping.provided && !mapping.variableId)) return false;
-    }
-    return true;
-  }
-  function buttons() {
-    const review = canReview();
-    byId('inspect').disabled = state.busy;
-    byId('website-url').disabled = state.busy;
-    byId('record-kind').disabled = state.busy;
-    const infoMode = state.kind === 'information';
-    byId('fill').disabled = connectionLost || !review || !selected.size || (infoMode ? !infoFieldsReady() : !byId('record-id').value.trim());
-    byId('fill').textContent = infoMode ? 'Approve selected fields & fill' : 'Approve selected fields & authenticate';
-    byId('deny').disabled = !['review', 'filled'].includes(state.phase) || state.busy;
-    byId('record-id').disabled = !review;
-    byId('duration').disabled = !['review', 'filled'].includes(state.phase) || state.busy;
-    byId('example-login').disabled = state.busy;
-    byId('example-card').disabled = state.busy;
-    byId('record-id').hidden = infoMode;
-    document.querySelector('label[for="record-id"]').hidden = infoMode;
-    byId('record-selection-status').hidden = infoMode;
-    const info = state.information || {};
-    byId('information-banner').hidden = !infoMode || !['review', 'filled'].includes(state.phase);
-    byId('info-load-catalog').disabled = !review || !!info.request;
-    const planBlocked = !review || !state.fields.length || !info.catalogLoaded || info.catalogStale || !!info.request;
-    byId('info-plan').disabled = planBlocked || state.modelObservationAllowed === false || (info.mode !== 'reviewed' && !byId('info-consent').checked);
-    byId('info-plan-local').disabled = planBlocked;
-    byId('info-consent').disabled = !review || !!info.request || state.modelObservationAllowed === false;
-    const variable = byId('vault-kind').value === 'variable';
-    const credential = ['username', 'password'].includes(byId('save-var-kind').value);
-    const profile = variable && !credential && byId('save-var-scope').value === 'profile';
-    for (const id of ['vault-kind', 'vault-record-id', 'save-var-name', 'save-var-desc', 'save-var-kind', 'save-var-scope', ...secretInputs]) byId(id).disabled = state.busy;
-    byId('vault-origin').disabled = state.busy || profile;
-    byId('vault-origin').required = !profile;
-    byId('vault-use-origin').disabled = state.busy || !state.origin || profile;
-    byId('vault-list').disabled = state.busy || !originInput() || profile;
-    byId('save-record').disabled = state.busy || (!profile && !originInput()) || (variable
-      ? !byId('save-var-name').value.trim() || !byId('save-var-desc').value.trim() || !byId('save-var-val').value
-      : !byId('vault-record-id').value.trim());
-    byId('vault-use-record').disabled = !review || originInput() !== state.origin || byId('vault-kind').value !== state.kind || !byId('vault-record-id').value.trim();
-    for (const control of byId('fields').querySelectorAll('input, select, button')) {
-      const mapping = info.mappings?.find(item => item.fieldId === control.dataset.fieldId);
-      control.disabled = !review || !!info.request || (control.type === 'checkbox' && infoMode && (!info.planned || (!mapping?.provided && !mapping?.variableId)));
-    }
-    for (const control of byId('website-actions').querySelectorAll('button')) control.disabled = state.busy || !['review', 'filled'].includes(state.phase) || !!state.pendingPermission || !!info.request;
-    for (const control of byId('info-dialog-form').querySelectorAll('input, textarea, select, button')) {
-      if (['dialog-cancel', 'dialog-skip'].includes(control.id)) control.disabled = state.busy && control.id !== 'dialog-cancel';
-      else control.disabled = state.busy || (control.id === 'dialog-var-scope' && ['username', 'password'].includes(info.request?.field.kind));
-    }
-    byId('permission-deny').disabled = state.busy || connectionLost;
-    byId('permission-stop').disabled = false;
-    if (connectionLost) for (const control of document.querySelectorAll('input, select, textarea, button')) {
-      if (!['stop', 'permission-stop', 'vault-lock', 'hosted-logout'].includes(control.id)) control.disabled = true;
-    }
-  }
-  async function send(command) {
-    state.busy = true; byId('error').textContent = ''; byId('error').hidden = true; buttons();
-    try { await window.autoMateAutofill({ ...command, revision: state.revision }); }
-    catch {
-      byId('error').textContent = 'Owner connection unavailable. No action was confirmed; close this window.';
-      byId('error').hidden = false;
-    }
-  }
-  function clearSecrets() { for (const id of secretInputs) byId(id).value = ''; }
-  function switchVaultKind() {
-    byId('login-fields').hidden = byId('vault-kind').value !== 'login';
-    byId('card-fields').hidden = byId('vault-kind').value !== 'card';
-    byId('variable-fields').hidden = byId('vault-kind').value !== 'variable';
-    const variable = byId('vault-kind').value === 'variable';
-    byId('vault-record-id').required = !variable;
-    byId('vault-record-id').hidden = variable;
-    document.querySelector('label[for="vault-record-id"]').hidden = variable;
-    for (const [group, active] of [['login-fields', !variable && byId('vault-kind').value === 'login'], ['card-fields', !variable && byId('vault-kind').value === 'card'], ['variable-fields', variable]]) {
-      for (const input of byId(group).querySelectorAll('input')) input.required = active;
-    }
-    const credential = ['username', 'password'].includes(byId('save-var-kind').value);
-    byId('save-var-scope').querySelector('option[value="profile"]').disabled = credential;
-    if (credential) byId('save-var-scope').value = 'site';
-    byId('save-var-val').type = byId('save-var-kind').value === 'password' ? 'password' : 'text';
-  }
-  function clearVaultForm() {
-    clearSecrets(); localVaultLock = true;
-    byId('vault-origin').value = ''; byId('vault-record-id').value = ''; byId('vault-kind').value = 'login';
-    byId('save-var-name').value = ''; byId('save-var-desc').value = ''; byId('save-var-val').value = '';
-    byId('save-var-kind').value = 'text'; byId('save-var-scope').value = 'profile';
-    switchVaultKind(); byId('vault-column').scrollTop = 0; renderVault();
-  }
-  function renderVault() {
-    const vault = state.vault || { locked: true, entries: [] };
-    const visible = !localVaultLock && !vault.locked && vault.origin === originInput();
-    byId('vault-status').textContent = visible ? 'Owner metadata visible' : 'Metadata locked';
-    byId('vault-message').textContent = vault.message || '';
-    byId('vault-error').textContent = vault.error || ''; byId('vault-error').hidden = !vault.error;
-    const entries = visible ? vault.entries : [];
-    const signature = JSON.stringify([visible, entries]);
-    if (signature !== recordsSignature) {
-      recordsSignature = signature;
-      const options = document.createDocumentFragment(); const empty = make('option', visible ? 'Choose a record ID' : 'Metadata locked'); empty.value = ''; options.append(empty);
-      for (const entry of entries) { const option = make('option', entry.recordId); option.value = entry.recordId; options.append(option); }
-      byId('vault-records').replaceChildren(options);
-    }
-    byId('vault-records').disabled = state.busy || !visible || !entries.length;
-    buttons();
-  }
-  byId('inspect-form').addEventListener('submit', event => {
-    event.preventDefault(); selected.clear();
-    void send({ action: 'inspect', url: byId('website-url').value, kind: byId('record-kind').value });
-  });
-  for (const id of ['website-url', 'record-kind', 'record-id', 'vault-record-id', 'save-var-name', 'save-var-desc', 'save-var-val']) byId(id).addEventListener('input', buttons);
-  byId('record-kind').addEventListener('change', buttons);
-  byId('vault-origin').addEventListener('input', renderVault);
-  byId('vault-kind').addEventListener('change', () => { clearSecrets(); switchVaultKind(); buttons(); });
-  for (const id of ['save-var-kind', 'save-var-scope']) byId(id).addEventListener('change', () => { switchVaultKind(); buttons(); });
-  byId('vault-use-origin').addEventListener('click', () => {
-    byId('vault-origin').value = state.origin || '';
-    if (state.kind !== 'information' && byId('vault-kind').value !== state.kind) { clearSecrets(); byId('vault-kind').value = state.kind; switchVaultKind(); }
-    renderVault();
-  });
-  byId('vault-list').addEventListener('click', () => {
-    if (!byId('vault-origin').reportValidity()) return;
-    void send({ action: 'vault-list', origin: byId('vault-origin').value });
-  });
-  byId('vault-records').addEventListener('change', () => { byId('vault-record-id').value = byId('vault-records').value; buttons(); });
-  byId('vault-use-record').addEventListener('click', () => {
-    byId('record-id').value = byId('vault-record-id').value;
-    byId('record-selection-status').textContent = 'Record ID selected for this origin. No fields have been approved; choose each disclosure below.';
-    buttons();
-  });
-  byId('save-form').addEventListener('submit', event => {
-    event.preventDefault();
-    const vKind = byId('vault-kind').value;
-    const origin = byId('vault-origin').value;
-    if (vKind === 'variable') {
-      const variable = {
-        name: byId('save-var-name').value.trim(),
-        description: byId('save-var-desc').value.trim(),
-        value: byId('save-var-val').value,
-        kind: byId('save-var-kind').value,
-        scope: byId('save-var-scope').value,
-        origin: byId('save-var-scope').value === 'profile' ? 'https://profile.auto-mate.invalid' : origin,
-      };
-      clearSecrets();
-      void send({ action: 'information-save', variable });
-    } else {
-      const record = vKind === 'card' ? {
-        version: 1, kind: 'card', cardholder: byId('save-cardholder').value, cardNumber: byId('save-card-number').value,
-        expiryMonth: byId('save-month').value, expiryYear: byId('save-year').value,
-      } : { version: 1, kind: 'login', username: byId('save-username').value, password: byId('save-password').value };
-      const rId = byId('vault-record-id').value;
-      clearSecrets();
-      void send({ action: 'vault-save', origin, recordId: rId, record });
-    }
-  });
-  byId('fill').addEventListener('click', () => {
-    const command = state.kind === 'information'
-      ? { action: 'information-fill', fields: [...selected], durationSeconds: Number(byId('duration').value) }
-      : { action: 'fill', recordId: byId('record-id').value, fields: [...selected], durationSeconds: Number(byId('duration').value) };
-    if (state.authenticationMode === 'user-key') {
-      localPermission = { command, revision: state.revision };
-      renderPermission();
-    } else void send(command);
-  });
-  byId('deny').addEventListener('click', () => { void send({ action: 'deny' }); });
-  function stopFromUi(action = 'stop') { clearFrame(); clearVaultForm(); clearInformationDialog(); localPermission = null; permissionSignature = ''; byId('permission-dialog').close(); void send({ action }); }
-  byId('stop').addEventListener('click', () => stopFromUi());
-  byId('vault-lock').addEventListener('click', () => stopFromUi('vault-lock'));
-  for (const [id, kind, url] of [
-    ['example-login', 'login', 'https://the-internet.herokuapp.com/login'],
-    ['example-card', 'card', 'https://autofill.me/form/credit-card-simple'],
-  ]) byId(id).addEventListener('click', () => { byId('website-url').value = url; byId('record-kind').value = kind; buttons(); });
-  byId('info-load-catalog').addEventListener('click', () => {
-    void send({ action: 'information-catalog' });
-  });
-  byId('info-plan').addEventListener('click', () => {
-    void send({ action: 'information-plan', shareMetadata: byId('info-consent').checked });
-  });
-  byId('info-plan-local').addEventListener('click', () => void send({ action: 'information-plan-local' }));
-  byId('info-consent').addEventListener('change', buttons);
-  byId('dialog-save-check').addEventListener('change', () => {
-    byId('dialog-save-details').hidden = !byId('dialog-save-check').checked;
-    for (const id of ['dialog-var-name', 'dialog-var-desc']) byId(id).required = byId('dialog-save-check').checked;
-  });
-  byId('info-dialog-form').addEventListener('submit', event => {
-    event.preventDefault();
-    const req = state.information?.request;
-    if (!req) return;
-    const valInput = byId('dialog-value-input');
-    const val = valInput ? valInput.value : '';
-    const save = byId('dialog-save-check').checked ? {
-      name: byId('dialog-var-name').value.trim(),
-      description: byId('dialog-var-desc').value.trim(),
-      scope: byId('dialog-var-scope').value,
-    } : null;
-    if (valInput) valInput.value = '';
-    byId('info-dialog').close();
-    void send({ action: 'information-provide', requestId: req.id, value: val, save });
-  });
-  byId('dialog-skip').addEventListener('click', () => {
-    const req = state.information?.request;
-    if (!req) return;
-    clearInformationDialog(false);
-    void send({ action: 'information-skip', requestId: req.id });
-  });
-  byId('dialog-cancel').addEventListener('click', () => stopFromUi());
-  byId('info-dialog').addEventListener('cancel', event => { event.preventDefault(); stopFromUi(); });
-  function clearInformationDialog(reset = true) {
-    const input = byId('dialog-value-input');
-    if (input) input.value = '';
-    byId('info-dialog').close();
-    if (reset) { dialogRequestId = ''; byId('dialog-input-container').replaceChildren(); }
-  }
-
-  function cancelDecode() {
-    generation++;
-    if (pendingImage) { pendingImage.onload = null; pendingImage.onerror = null; pendingImage.src = ''; }
-    pendingImage = null; pendingFrame = null;
-  }
-  function clearFrame() {
-    cancelDecode(); committedImage = ''; annotationSignature = '';
-    byId('canvas').hidden = true; byId('annotations').replaceChildren();
-    byId('frame-image').removeAttribute('src'); byId('frame-empty').hidden = false;
-    byId('frame-status').textContent = 'Waiting for inspection';
-  }
-  function renderFields() {
-    const info = state.information;
-    const signature = JSON.stringify([revision, state.fields, info?.mappings]);
-    if (signature === fieldsSignature) return;
-    fieldsSignature = signature;
-    selected.clear();
-    const choices = document.createDocumentFragment();
-    (state.fields || []).forEach((field, index) => {
-      const row = make('div', '', 'field-choice');
-      const labelRow = make('label', '', 'field-label-row');
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox'; checkbox.value = field.id; checkbox.checked = selected.has(field.id);
-      checkbox.addEventListener('change', () => {
-        if (checkbox.checked) selected.add(field.id); else selected.delete(field.id);
-        row.classList.toggle('selected', checkbox.checked); buttons();
-      });
-      checkbox.dataset.fieldId = field.id;
-      row.classList.toggle('selected', checkbox.checked);
-      labelRow.append(checkbox, make('strong', (index + 1) + '. ' + field.name), make('span', field.category, 'category ' + field.category));
-      row.append(labelRow, make('blockquote', '“' + field.sourceText + '”'), make('p', 'Verified ' + field.association + ' · Website text is untrusted'));
-
-      if (state.kind === 'information') {
-        const mapping = info?.mappings?.find(m => m.fieldId === field.id);
-        const statusDiv = make('div', '', 'mapping-badge');
-        if (!info?.planned) {
-          statusDiv.textContent = 'Not yet mapped by Agent';
-          statusDiv.classList.add('missing');
-        } else if (mapping?.provided) {
-          statusDiv.textContent = '✓ Ready: Value entered via dialog';
-          statusDiv.classList.add('ready');
-        } else if (mapping?.skipped) {
-          statusDiv.textContent = 'Skipped by user';
-          statusDiv.classList.add('skipped');
-        } else if (mapping?.variableId) {
-          const v = info.variables?.find(item => item.id === mapping.variableId);
-          statusDiv.textContent = '✓ Mapped: ' + (v ? v.name + ' (' + v.description + ') [' + v.scope + ']' : mapping.variableId);
-          statusDiv.classList.add('ready');
-        } else {
-          statusDiv.textContent = '⚠ Missing from vault: Agent needs this info';
-          statusDiv.classList.add('missing');
-        }
-        row.append(statusDiv);
-
-        if (info?.planned) {
-          const actionsDiv = make('div', '', 'field-actions');
-          const enterBtn = make('button', 'Enter value in dialog', 'compact-button');
-          enterBtn.type = 'button';
-          enterBtn.disabled = state.busy;
-          enterBtn.addEventListener('click', () => {
-            void send({ action: 'information-request', fieldId: field.id });
-          });
-          actionsDiv.append(enterBtn);
-
-          if (mapping?.choices?.length) {
-            const select = document.createElement('select');
-            select.className = 'compact-button';
-            select.disabled = state.busy;
-            const defaultOpt = make('option', 'Or choose vault variable...');
-            defaultOpt.value = '';
-            select.append(defaultOpt);
-            for (const varId of mapping.choices) {
-              const v = info.variables?.find(item => item.id === varId);
-              if (v) {
-                const opt = make('option', v.name + ' (' + v.description + ')');
-                opt.value = v.id;
-                if (mapping.variableId === v.id) opt.selected = true;
-                select.append(opt);
-              }
-            }
-            select.addEventListener('change', () => {
-              if (select.value) void send({ action: 'information-choose', fieldId: field.id, variableId: select.value });
-            });
-            actionsDiv.append(select);
-          }
-          row.append(actionsDiv);
+      if (!connectionReady && !['workspace-init', 'workspace-stop'].includes(command.action)) throw new Error('Connection unavailable. Wait for the workspace to reconnect.');
+      if (isNative) {
+        await window.autoMateAutofill(command);
+      } else {
+        const response = await fetch('/api/command', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken
+          },
+          body: JSON.stringify(command),
+          signal: AbortSignal.timeout(30000)
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.message || body.error || `Command failed (${response.status})`);
         }
       }
-
-      choices.append(row);
-    });
-    if (!state.fields?.length) choices.append(make('p', 'No supported verified fields. Inspect a website first.', 'waiting'));
-    byId('fields').replaceChildren(choices);
+      return true;
+    } catch (err) {
+      showError(err instanceof Error ? err.message : String(err));
+      return false;
+    } finally {
+      commandCount--; isBusy = commandCount > 0;
+      updateControls();
+    }
   }
-  function renderInformation() {
-    const info = state.information;
-    if (state.kind !== 'information' || !info || !activePhases.has(state.phase)) {
-      byId('information-banner').hidden = true;
-      clearInformationDialog();
+
+  // Incoming Update Handler (workspace state or frame)
+  function handleIncomingUpdate(update) {
+    if (!update || typeof update !== 'object') return;
+
+    if (document.visibilityState === 'hidden') return;
+    if (update.kind === 'workspace') {
+      if (update.state && typeof update.state === 'object') {
+        renderWorkspaceState(update.state);
+      }
+    } else if (update.kind === 'workspace-frame') {
+      void renderFrame(update.frame ?? null);
+    }
+  }
+
+  // Expose binding immediately for native Playwright detection
+  window.autoMateAutofillUpdate = handleIncomingUpdate;
+
+  // Polling for Hosted Mode
+  function disconnect(message) {
+    connectionReady = false;
+    updateSequence = 0;
+    clearSensitiveFields();
+    clearFrame(message);
+    activeRequestId = '';
+    for (const id of ['permission-modal', 'credential-modal', 'add-variable-modal', 'settings-modal']) {
+      const dialog = byId(id); if (dialog?.open) dialog.close();
+    }
+    updateControls();
+  }
+  async function pollUpdates() {
+    if (isPolling || document.visibilityState === 'hidden' || isNative) return;
+    isPolling = true;
+    const epoch = pollEpoch;
+    const controller = new AbortController(); pollController = controller;
+    try {
+      const res = await fetch(`/api/updates?after=${updateSequence}`, { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]) });
+      if (epoch !== pollEpoch || document.visibilityState === 'hidden') return;
+      if (res.status === 401) { disconnect('Session expired.'); window.location.replace('/login'); return; }
+      if (!res.ok) throw new Error(`Workspace disconnected (HTTP ${res.status}).`);
+      const data = await res.json();
+      if (epoch !== pollEpoch || document.visibilityState === 'hidden') return;
+      if (typeof data.sequence !== 'number' || !Array.isArray(data.updates)) throw new Error('Invalid workspace update.');
+      connectionReady = true;
+      updateSequence = data.sequence;
+      for (const update of data.updates) handleIncomingUpdate(update);
+      updateControls();
+    } catch {
+      if (epoch === pollEpoch && document.visibilityState !== 'hidden') disconnect('Connection lost. Controls locked; the host stops unattended sessions after five seconds.');
+    } finally {
+      if (pollController === controller) pollController = undefined;
+      isPolling = false;
+    }
+  }
+
+  function startPolling() {
+    clearInterval(pollTimer);
+    pollTimer = setInterval(pollUpdates, 500);
+    pollUpdates();
+  }
+
+  // Security: Clear sensitive fields and frame on blur/hide
+  function clearSensitiveFields() {
+    const secretIds = ['cred-value-input', 'new-var-val', 'setting-model-apikey'];
+    for (const id of secretIds) {
+      const el = byId(id);
+      if (el) el.value = '';
+    }
+  }
+
+  function clearFrame(message = 'No live browser preview. Send an instruction to start.') {
+    ++frameGeneration;
+    const img = byId('frame-image'); if (img) img.removeAttribute('src');
+    const canvas = byId('canvas'); if (canvas) canvas.hidden = true;
+    const empty = byId('frame-empty'); if (empty) { empty.hidden = false; empty.textContent = message; }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    ++pollEpoch; pollController?.abort();
+    if (document.visibilityState === 'hidden') {
+      disconnect('Preview paused while this window is in the background.');
+    } else if (isNative) {
+      connectionReady = true;
+      sendCommand({ action: 'workspace-init' });
+    } else {
+      updateSequence = 0; pollUpdates();
+    }
+  });
+
+  // Message sanitization (strip model reasoning / CoT)
+  function cleanText(raw) {
+    if (!raw) return '';
+    return raw
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/```thought[\s\S]*?```/gi, '')
+      .trim();
+  }
+
+  function renderMessages(messages) {
+    const container = byId('chat-messages');
+    if (!container) return;
+
+    const intro = container.querySelector('.chat-bubble.intro');
+    container.replaceChildren();
+    if (intro) container.appendChild(intro);
+
+    for (const msg of messages) {
+      const text = cleanText(msg.content);
+      if (!text && msg.role === 'assistant') continue;
+
+      const bubble = document.createElement('div');
+      bubble.className = `chat-bubble ${msg.role}`;
+      bubble.dataset.messageId = msg.id;
+
+      if (msg.role === 'subagent') {
+        const meta = document.createElement('div');
+        meta.className = 'bubble-meta';
+        meta.textContent = `Subagent: ${msg.agent || 'Evaluator'}`;
+        bubble.appendChild(meta);
+      } else if (msg.role === 'tool') {
+        const meta = document.createElement('div');
+        meta.className = 'bubble-meta';
+        meta.textContent = 'Browser Action';
+        bubble.appendChild(meta);
+      }
+
+      const p = document.createElement('p');
+      p.textContent = text;
+      bubble.appendChild(p);
+
+      container.appendChild(bubble);
+    }
+
+    container.scrollTop = container.scrollHeight;
+  }
+
+  // DOM-safe plain text notes rendering
+  function renderNotes(notes) {
+    const container = byId('notes-space-list');
+    if (!container) return;
+    container.replaceChildren();
+
+    if (!notes || notes.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'empty-hint';
+      p.textContent = 'No notes taken yet.';
+      container.appendChild(p);
       return;
     }
-    byId('info-provider').textContent = info.mode === 'reviewed'
-      ? 'Deterministic local mapping · No model request.'
-      : 'Configured API model label: ' + info.model + '. Field labels and metadata are sent only with your consent.';
-    if (state.modelObservationAllowed === false) byId('info-provider').textContent = 'This browser has interacted with the website and may contain private data. API planning is blocked. Use explicit local mapping, or inspect again for a fresh isolated browser.';
-    byId('info-consent-row').hidden = info.mode === 'reviewed';
-    byId('info-plan-controls').hidden = !info.catalogLoaded;
-    byId('info-catalog-details').hidden = !info.catalogLoaded;
-    byId('info-catalog-count').textContent = info.variables?.length || 0;
-    const signature = JSON.stringify([state.revision, info.variables]);
-    if (signature !== catalogSignature) {
-      catalogSignature = signature;
-      byId('info-consent').checked = false;
-      const items = document.createDocumentFragment();
-      for (const variable of info.variables || []) {
-        const card = make('div', '', 'info-variable-item');
-        const header = make('div', '', 'info-variable-header');
-        header.append(make('strong', variable.name), make('span', variable.scope + ' · ' + variable.kind + (variable.available ? ' · Available' : ' · Other site, unavailable'), 'info-variable-scope'));
-        card.append(header, make('p', variable.description, 'info-variable-desc'));
-        items.append(card);
+
+    for (const note of notes) {
+      const card = document.createElement('article');
+      card.className = 'note-card item-card';
+
+      const header = document.createElement('div');
+      header.className = 'note-header';
+
+      const topic = document.createElement('strong');
+      topic.className = 'note-topic';
+      topic.textContent = note.topic || 'Note';
+      header.appendChild(topic);
+
+      if (note.agent) {
+        const agentBadge = document.createElement('span');
+        agentBadge.className = 'badge agent-badge';
+        agentBadge.textContent = note.agent;
+        header.appendChild(agentBadge);
       }
-      if (!info.variables?.length) items.append(make('p', 'No saved variables. Missing fields will ask you for information; entered values stay out of the model.', 'info-variable-desc'));
-      byId('info-catalog-list').replaceChildren(items);
+
+      if (note.timestamp) {
+        const time = document.createElement('time');
+        time.className = 'note-time';
+        time.textContent = new Date(note.timestamp).toLocaleTimeString();
+        header.appendChild(time);
+      }
+      card.appendChild(header);
+
+      const body = document.createElement('p');
+      body.className = 'note-content';
+      body.textContent = note.content;
+      card.appendChild(body);
+
+      if (note.sourceUrl) {
+        const footer = document.createElement('div');
+        footer.className = 'note-footer';
+
+        const label = document.createElement('span');
+        label.textContent = 'Source: ';
+        footer.appendChild(label);
+
+        const link = document.createElement('a');
+        link.className = 'note-source-link';
+        link.href = note.sourceUrl;
+        link.textContent = note.sourceUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        footer.appendChild(link);
+
+        card.appendChild(footer);
+      }
+
+      container.appendChild(card);
     }
-    const request = info.request;
-    if (!request) { clearInformationDialog(); return; }
-    if (request.id !== dialogRequestId) {
-      clearInformationDialog();
-      dialogRequestId = request.id;
-      byId('dialog-title').textContent = 'Information needed: ' + request.field.label;
-      byId('dialog-prompt').textContent = 'Destination: ' + state.origin + '. Enter this ' + request.field.kind + ' information locally, or skip it. Providing information is not permission to fill the website.';
-      const container = byId('dialog-input-container');
-      const label = make('label', request.field.label);
-      label.htmlFor = 'dialog-value-input';
-      let input;
-      if (request.field.options?.length) {
-        input = document.createElement('select');
-        const empty = make('option', 'Select an option…'); empty.value = ''; input.append(empty);
-        for (const value of request.field.options) { const option = make('option', value); option.value = value; input.append(option); }
+  }
+
+  // Vault Variables rendering (Names/descriptions visible; values NEVER rendered)
+  function renderVariables(variables, activeOrigin) {
+    const container = byId('vault-variables-list');
+    if (!container) return;
+    container.replaceChildren();
+
+    if (!variables || variables.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'empty-hint';
+      p.textContent = 'No variables stored in vault yet. Click "+ Add Variable" to save encrypted credentials.';
+      container.appendChild(p);
+      return;
+    }
+
+    for (const v of variables) {
+      const card = document.createElement('div');
+      card.className = 'item-card variable-card';
+
+      const info = document.createElement('div');
+      info.className = 'item-card-info';
+
+      const titleRow = document.createElement('div');
+      titleRow.className = 'variable-title-row';
+
+      const name = document.createElement('strong');
+      name.textContent = v.name;
+      titleRow.appendChild(name);
+
+      const kindBadge = document.createElement('span');
+      kindBadge.className = `badge kind-badge kind-${v.kind}`;
+      kindBadge.textContent = v.kind;
+      titleRow.appendChild(kindBadge);
+
+      const scopeBadge = document.createElement('span');
+      scopeBadge.className = `badge scope-badge scope-${v.scope}`;
+      scopeBadge.textContent = v.scope === 'site' ? 'Site-bound' : 'Shared profile';
+      titleRow.appendChild(scopeBadge);
+
+      if (v.available === false) {
+        const unavail = document.createElement('span');
+        unavail.className = 'badge';
+        unavail.textContent = 'Unavailable';
+        titleRow.appendChild(unavail);
+      }
+
+      info.appendChild(titleRow);
+
+      const desc = document.createElement('p');
+      desc.className = 'variable-desc';
+      desc.textContent = v.description;
+      info.appendChild(desc);
+
+      card.appendChild(info);
+
+      const actions = document.createElement('div');
+      actions.className = 'item-card-actions';
+
+      if (activeOrigin) {
+        const grantBtn = document.createElement('button');
+        grantBtn.type = 'button';
+        grantBtn.className = 'compact-button';
+        grantBtn.textContent = 'Grant to site';
+        grantBtn.disabled = v.available === false;
+        grantBtn.title = `Grant this variable to ${activeOrigin}`;
+        grantBtn.addEventListener('click', () => {
+          sendCommand({ action: 'workspace-grant', origin: activeOrigin, names: [v.name] });
+        });
+        actions.appendChild(grantBtn);
+      }
+
+      card.appendChild(actions);
+      container.appendChild(card);
+    }
+  }
+
+  // Active Grants rendering
+  function renderGrants(grants) {
+    const container = byId('ongoing-permissions-list');
+    if (!container) return;
+    container.replaceChildren();
+
+    if (!grants || grants.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'empty-hint';
+      p.textContent = 'No ongoing permissions granted yet.';
+      container.appendChild(p);
+      return;
+    }
+
+    for (const grant of grants) {
+      const card = document.createElement('div');
+      card.className = 'item-card grant-card';
+
+      const info = document.createElement('div');
+      info.className = 'item-card-info';
+
+      const origin = document.createElement('strong');
+      origin.textContent = grant.origin;
+      info.appendChild(origin);
+
+      const vars = document.createElement('p');
+      vars.className = 'grant-variables-text';
+      vars.textContent = `Variables: ${grant.names.join(', ')}`;
+      info.appendChild(vars);
+
+      if (grant.group) {
+        const groupSpan = document.createElement('span');
+        groupSpan.className = 'badge group-badge';
+        groupSpan.textContent = `Group: ${grant.group}`;
+        info.appendChild(groupSpan);
+      }
+
+      if (grant.task) {
+        const taskSpan = document.createElement('span');
+        taskSpan.className = 'grant-task-text';
+        taskSpan.textContent = `Task: ${grant.task}`;
+        info.appendChild(taskSpan);
+      }
+
+      card.appendChild(info);
+
+      const actions = document.createElement('div');
+      actions.className = 'item-card-actions';
+
+      const revokeBtn = document.createElement('button');
+      revokeBtn.type = 'button';
+      revokeBtn.className = 'compact-button danger-btn';
+      revokeBtn.textContent = 'Revoke';
+      revokeBtn.title = 'Revoke variable permissions for this site';
+      revokeBtn.addEventListener('click', () => {
+        sendCommand({ action: 'workspace-revoke', grantId: grant.id });
+      });
+      actions.appendChild(revokeBtn);
+
+      card.appendChild(actions);
+      container.appendChild(card);
+    }
+  }
+
+  // Quick Grant selection options
+  function updateQuickGrantOptions(variables, groups, activeOrigin) {
+    const select = byId('quick-grant-select');
+    const btn = byId('quick-grant-submit-btn');
+    const label = byId('quick-grant-origin-label');
+    if (!select || !btn) return;
+
+    if (label) {
+      label.textContent = activeOrigin ? `Grant to active site (${activeOrigin}):` : 'Grant to site (No active site):';
+    }
+
+    const prevVal = select.value;
+    select.replaceChildren();
+
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = '-- Select Variable or Group --';
+    select.appendChild(defaultOpt);
+
+    if (groups && groups.length > 0) {
+      const groupOptGroup = document.createElement('optgroup');
+      groupOptGroup.label = 'Variable Groups';
+      for (const g of groups) {
+        const opt = document.createElement('option');
+        opt.value = `group:${g.id}`;
+        opt.textContent = `Group: ${g.name} (${g.variables.length} vars)`;
+        groupOptGroup.appendChild(opt);
+      }
+      select.appendChild(groupOptGroup);
+    }
+
+    if (variables && variables.length > 0) {
+      const varOptGroup = document.createElement('optgroup');
+      varOptGroup.label = 'Individual Variables';
+      for (const v of variables) {
+        const opt = document.createElement('option');
+        opt.value = `var:${v.name}`;
+        opt.disabled = v.available === false;
+        opt.textContent = `${v.name} (${v.kind})`;
+        varOptGroup.appendChild(opt);
+      }
+      select.appendChild(varOptGroup);
+    }
+
+    if (prevVal) select.value = prevVal;
+    btn.disabled = !activeOrigin || !select.value;
+  }
+
+  // Pending Permission Modal (WorkspacePermission)
+  function handlePermissionModal(perm) {
+    const dialog = byId('permission-modal');
+    if (!dialog) return;
+
+    dialog.oncancel = event => {
+      event.preventDefault();
+      if (perm) sendCommand({ action: 'workspace-permission', permissionId: perm.id, allow: false });
+    };
+    if (!perm) {
+      if (dialog.open) dialog.close();
+      return;
+    }
+
+    byId('perm-origin').textContent = perm.origin;
+    byId('perm-title').textContent = perm.type === 'variable' ? 'Variable Permission Requested' : 'Action Permission Requested';
+    byId('perm-type-badge').textContent = perm.type;
+    byId('perm-label').textContent = perm.label;
+    byId('perm-desc').textContent = perm.description;
+
+    const metaBox = byId('perm-meta');
+    metaBox.replaceChildren();
+    if (perm.variableName) {
+      const pVar = document.createElement('p');
+      pVar.textContent = `Variable: ${perm.variableName}${perm.variableDescription ? ` (${perm.variableDescription})` : ''}`;
+      metaBox.appendChild(pVar);
+    }
+    if (perm.kind) {
+      const pKind = document.createElement('p');
+      pKind.textContent = `Kind: ${perm.kind}`;
+      metaBox.appendChild(pKind);
+    }
+    if (perm.fieldId) {
+      const pField = document.createElement('p');
+      pField.textContent = `Field ID: ${perm.fieldId}`;
+      metaBox.appendChild(pField);
+    }
+
+    const controls = byId('perm-grant-controls');
+    const selector = byId('perm-grant-scope');
+    selector.replaceChildren();
+    const grantable = perm.type === 'variable' && localState.variables.filter(variable => variable.available && variable.name === perm.variableName).length === 1;
+    controls.hidden = !grantable;
+    byId('perm-allow-btn').textContent = perm.type === 'variable' ? 'Allow this fill once' : 'Allow this action once';
+    if (grantable) {
+      const individual = document.createElement('option'); individual.value = ''; individual.textContent = `Only ${perm.variableName}`; selector.appendChild(individual);
+      for (const group of localState.settings.groups.filter(group => group.variables.includes(perm.variableName))) {
+        const option = document.createElement('option'); option.value = group.id; option.textContent = `Group: ${group.name}`;
+        option.disabled = group.variables.some(name => localState.variables.filter(variable => variable.available && variable.name === name).length !== 1);
+        selector.appendChild(option);
+      }
+      byId('perm-grant-btn').onclick = async () => {
+        const command = { action: 'workspace-grant', origin: perm.origin, ...(selector.value ? { group: selector.value } : { names: [perm.variableName] }) };
+        if (await sendCommand(command)) dialog.close();
+      };
+    }
+    byId('perm-allow-btn').onclick = () => {
+      sendCommand({ action: 'workspace-permission', permissionId: perm.id, allow: true });
+      dialog.close();
+    };
+
+    byId('perm-deny-btn').onclick = () => {
+      sendCommand({ action: 'workspace-permission', permissionId: perm.id, allow: false });
+      dialog.close();
+    };
+
+    byId('perm-stop-btn').onclick = () => {
+      sendCommand({ action: 'workspace-stop' });
+      dialog.close();
+    };
+
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+  }
+
+  // Unknown Information Request Modal (WorkspaceInformationRequest)
+  function handleInformationRequestModal(req) {
+    const dialog = byId('credential-modal');
+    if (!dialog) return;
+
+    dialog.oncancel = event => { event.preventDefault(); clearSensitiveFields(); sendCommand({ action: 'workspace-stop' }); };
+    dialog.onclose = () => { byId('cred-value-input').value = ''; };
+    if (!req) {
+      activeRequestId = '';
+      byId('cred-value-input').value = '';
+      if (dialog.open) dialog.close();
+      return;
+    }
+
+    byId('cred-origin-banner').textContent = req.origin;
+    const nameInput = byId('cred-name-input');
+    const descInput = byId('cred-desc-input');
+    const valInput = byId('cred-value-input');
+    const scopeSelect = byId('cred-var-scope');
+    const scopeNotice = byId('cred-scope-notice');
+    const saveCheck = byId('cred-save-check');
+
+    if (activeRequestId !== req.id) {
+      activeRequestId = req.id;
+      nameInput.value = req.name || req.fieldId;
+      descInput.value = req.description || `Value for field ${req.fieldId}`;
+      valInput.value = '';
+      saveCheck.checked = true;
+      scopeSelect.value = 'site';
+    }
+    valInput.type = 'password';
+
+    const isCredential = req.kind === 'password' || req.kind === 'username';
+    if (isCredential) {
+      scopeSelect.value = 'site';
+      scopeSelect.disabled = true;
+      scopeNotice.textContent = 'Usernames and passwords must be restricted to this site.';
+    } else {
+      scopeSelect.disabled = false;
+      scopeNotice.textContent = '';
+    }
+
+    byId('credential-form').onsubmit = (e) => {
+      e.preventDefault();
+      const value = valInput.value;
+      const name = nameInput.value.trim();
+      const desc = descInput.value.trim();
+      const scope = scopeSelect.value;
+      const save = saveCheck.checked;
+
+      valInput.value = '';
+      dialog.close();
+
+      sendCommand({
+        action: 'workspace-provide',
+        requestId: req.id,
+        value,
+        save,
+        name,
+        description: desc,
+        scope
+      });
+    };
+
+    byId('cred-skip-btn').onclick = () => {
+      valInput.value = '';
+      dialog.close();
+      sendCommand({ action: 'workspace-skip', requestId: req.id });
+    };
+
+    byId('cred-stop-btn').onclick = () => {
+      valInput.value = '';
+      dialog.close();
+      sendCommand({ action: 'workspace-stop' });
+    };
+
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+  }
+
+  async function renderFrame(frame) {
+    if (document.visibilityState === 'hidden' || !connectionReady) return;
+    if (!frame || typeof frame.image !== 'string' || !frame.image.startsWith('iVBORw0KGgo') || !/^[A-Za-z0-9+/=]+$/.test(frame.image)) { clearFrame(); return; }
+    const generation = ++frameGeneration;
+    const next = new Image(); next.src = 'data:image/png;base64,' + frame.image;
+    try { await next.decode(); } catch { if (generation === frameGeneration) clearFrame('Preview image could not be verified.'); return; }
+    if (generation !== frameGeneration || document.visibilityState === 'hidden' || !connectionReady) return;
+    byId('frame-image').src = next.src;
+    byId('canvas').hidden = false;
+    byId('frame-empty').hidden = true;
+  }
+
+  // Workspace State update orchestrator
+  function renderWorkspaceState(state) {
+    localState = state;
+
+    // Status Badge
+    const badge = byId('agent-status-badge');
+    if (badge) {
+      const phaseNames = {
+        idle: 'Ready',
+        running: 'Working...',
+        waiting: 'Waiting for approval',
+        stopped: 'Stopped',
+        failed: 'Attention required'
+      };
+      badge.textContent = phaseNames[state.phase] || state.phase;
+      badge.className = `status-badge ${state.phase}`;
+    }
+
+    // Active Origin Badge
+    const originBadge = byId('active-origin-badge');
+    if (originBadge) {
+      if (state.origin) {
+        originBadge.hidden = false;
+        originBadge.textContent = state.origin;
       } else {
-        input = document.createElement(request.field.kind === 'text' ? 'textarea' : 'input');
-        if (input.tagName === 'INPUT') input.type = ['password', 'email', 'tel', 'url', 'date', 'number'].includes(request.field.kind) ? request.field.kind : 'text';
-        input.autocomplete = 'off';
-        input.maxLength = 4096;
+        originBadge.hidden = true;
       }
-      input.id = 'dialog-value-input'; input.required = true;
-      container.replaceChildren(label, input);
-      byId('dialog-save-check').checked = false;
-      byId('dialog-save-details').hidden = true;
-      for (const id of ['dialog-var-name', 'dialog-var-desc']) byId(id).required = false;
-      byId('dialog-var-name').value = request.field.label.slice(0, 80);
-      byId('dialog-var-desc').value = ('Information for ' + request.field.label).slice(0, 500);
-      const credential = ['username', 'password'].includes(request.field.kind);
-      byId('dialog-var-scope').value = credential ? 'site' : 'profile';
-      byId('dialog-var-scope').disabled = credential;
     }
-    if (!state.busy && !byId('info-dialog').open) { byId('info-dialog').showModal(); byId('dialog-value-input').focus(); }
-  }
-  function renderWebsiteActions() {
-    const available = state.authenticationMode === 'user-key' && !!state.origin;
-    byId('website-action-panel').hidden = !available;
-    const signature = JSON.stringify([state.revision, state.websiteActions]);
-    if (signature === actionsSignature) return;
-    actionsSignature = signature;
-    const controls = document.createDocumentFragment();
-    for (const action of state.websiteActions || []) {
-      const button = make('button', 'Request click: ' + action.label);
-      button.type = 'button';
-      button.addEventListener('click', () => void send({ action: 'website-click-request', buttonId: action.id, durationSeconds: Number(byId('duration').value) }));
-      controls.append(button);
+
+    // Error
+    if (state.error) {
+      showError(state.error);
     }
-    if (!state.websiteActions?.length) controls.append(make('p', 'No uniquely labelled, supported website buttons on this page.', 'approval-notice'));
-    byId('website-actions').replaceChildren(controls);
-  }
-  function renderPermission() {
-    const permission = state.pendingPermission;
-    const dialog = byId('permission-dialog');
-    if (localPermission && localPermission.revision !== state.revision) localPermission = null;
-    const signature = permission?.id || (localPermission ? 'fill:' + localPermission.revision : '');
-    if (!signature) { dialog.close(); permissionSignature = ''; return; }
-    if (signature !== permissionSignature) {
-      permissionSignature = signature;
-      byId('permission-title').textContent = permission ? 'Allow this website button click?' : 'Allow these field disclosures?';
-      byId('permission-body').textContent = permission
-        ? `Website: ${permission.origin}
-Button: “${permission.label}”
-This may submit data, navigate, purchase, or delete. Unfilled entries and previous field approvals will be cleared. The protected browser lifetime becomes ${permission.durationSeconds} seconds. No replacement button will be clicked.`
-        : `Website: ${state.origin}
-Fields: ${state.fields.filter(field => localPermission.command.fields.includes(field.id)).map(field => field.name).join(', ')}
-The website and its scripts can read these values immediately. The model will not receive them. This does not submit the form.`;
-      if (!dialog.open) dialog.showModal();
-      byId('permission-deny').focus();
+
+    // Messages
+    if (Array.isArray(state.messages)) {
+      renderMessages(state.messages);
     }
-    byId('permission-approve').disabled = state.busy;
-  }
-  function denyPermission() {
-    const permission = state.pendingPermission;
-    localPermission = null; permissionSignature = ''; byId('permission-dialog').close();
-    if (permission) void send({ action: 'website-click-deny', permissionId: permission.id });
-  }
-  byId('permission-deny').addEventListener('click', denyPermission);
-  byId('permission-dialog').addEventListener('cancel', event => { event.preventDefault(); denyPermission(); });
-  byId('permission-stop').addEventListener('click', () => stopFromUi());
-  byId('permission-approve').addEventListener('click', () => {
-    const permission = state.pendingPermission;
-    const command = permission ? { action: 'website-click-approve', permissionId: permission.id } : localPermission?.command;
-    localPermission = null; permissionSignature = ''; byId('permission-dialog').close();
-    if (command) void send(command);
-  });
-  function renderState(next) {
-    if (next.revision < revision) return;
-    const inspected = state.phase === 'inspecting' && next.phase === 'review';
-    const wasStopped = state.phase === 'stopped';
-    state = next;
-    if (inspected) { byId('website-url').value = state.url; byId('record-kind').value = state.kind; }
-    if (revision !== state.revision) {
-      revision = state.revision; selected.clear(); byId('record-id').value = ''; clearFrame();
-      if (state.url && ['review', 'filled'].includes(state.phase)) byId('website-url').value = state.url;
-      byId('vault-column').scrollTop = 0;
-      clearInformationDialog(); byId('info-consent').checked = false; localPermission = null;
-      byId('record-selection-status').textContent = 'Selecting a record ID does not approve any disclosure.';
+
+    // Notes
+    if (Array.isArray(state.notes)) {
+      renderNotes(state.notes);
     }
-    if (state.phase === 'stopped' && !wasStopped) clearVaultForm();
-    if (state.vault?.locked) localVaultLock = false;
-    byId('phase').textContent = phases[state.phase] || 'Unavailable';
-    byId('destination').textContent = state.origin ? 'Approved destination: ' + state.origin : 'No website open';
-    byId('message').textContent = state.message || '';
-    byId('error').textContent = state.error || ''; byId('error').hidden = !state.error;
-    const hosted = state.authenticationMode === 'user-key';
-    byId('authentication-notice').textContent = hosted
-      ? 'Hosted development preview. Your key-authenticated session authorizes vault access; Windows Hello is not used. Trust the operator’s laptop. Every website click needs separate approval. Stop cannot undo values already disclosed.'
-      : 'Local development preview. Windows Hello is required for vault operations. No website buttons are clicked automatically. Stop cannot undo disclosures.';
-    byId('vault-authentication-notice').textContent = hosted
-      ? 'Vault data is encrypted with your chosen key on the host. An active authenticated session is required for every operation. Sign out to close your browser and revoke access.'
-      : 'Data stays in the native encrypted vault. Every save, listing, and retrieval requires Windows Hello.';
-    renderFields(); renderVault();
-    renderInformation();
-    renderWebsiteActions(); renderPermission();
-    if (!activePhases.has(state.phase)) {
-      if (committedImage || pendingImage) clearFrame();
-      byId('frame-status').textContent = state.phase === 'inspecting' ? 'Inspecting · No vault access' : 'Preview inactive';
+
+    // Variables
+    if (Array.isArray(state.variables)) {
+      renderVariables(state.variables, state.origin);
     }
-    buttons();
+
+    // Grants
+    if (Array.isArray(state.grants)) {
+      renderGrants(state.grants);
+    }
+
+    // Quick Grant
+    updateQuickGrantOptions(state.variables, state.settings?.groups, state.origin);
+
+    // Dialogs
+    handlePermissionModal(state.permission);
+    handleInformationRequestModal(state.request);
+
+    updateControls();
   }
-  function renderAnnotations(frame) {
-    const signature = JSON.stringify([frame.width, frame.height, frame.annotations]);
-    if (signature === annotationSignature) return;
-    annotationSignature = signature;
-    const marks = document.createDocumentFragment();
-    frame.annotations.forEach((annotation, index) => {
-      for (const role of ['source', 'field']) {
-        const box = annotation[role]; const node = make('div', '', 'autofill-mark ' + role + ' ' + annotation.category);
-        node.style.left = (100 * box.x / frame.width) + '%'; node.style.top = (100 * box.y / frame.height) + '%';
-        node.style.width = (100 * box.width / frame.width) + '%'; node.style.height = (100 * box.height / frame.height) + '%';
-        node.append(make('span', String(index + 1))); marks.append(node);
+
+  function updateControls() {
+    const isRunning = localState.phase === 'running';
+    const isWaiting = localState.phase === 'waiting';
+
+    const sendBtn = byId('chat-send-btn');
+    const stopBtn = byId('chat-stop-btn');
+    const promptInput = byId('chat-prompt-input');
+
+    if (sendBtn) sendBtn.disabled = isBusy || !connectionReady;
+    if (promptInput) { promptInput.disabled = !connectionReady; promptInput.placeholder = isRunning || isWaiting ? 'Follow up — stops the current task first' : 'What should the agent do? Never paste secrets here.'; }
+    if (stopBtn) stopBtn.disabled = !(isRunning || isWaiting || isBusy || localState.origin);
+  }
+
+  // Tabs
+  function setupTabs() {
+    const tabs = [
+      { btn: byId('tab-variables-btn'), panel: byId('tab-variables-panel') },
+      { btn: byId('tab-permissions-btn'), panel: byId('tab-permissions-panel') },
+      { btn: byId('tab-notes-btn'), panel: byId('tab-notes-panel') }
+    ];
+
+    tabs.forEach(({ btn, panel }) => {
+      if (!btn || !panel) return;
+      btn.addEventListener('click', () => {
+        tabs.forEach(t => {
+          t.btn.classList.remove('active');
+          t.panel.hidden = true;
+        });
+        btn.classList.add('active');
+        panel.hidden = false;
+      });
+    });
+  }
+
+  // Quick Grant
+  function setupQuickGrant() {
+    const select = byId('quick-grant-select');
+    const btn = byId('quick-grant-submit-btn');
+
+    select?.addEventListener('change', () => {
+      btn.disabled = !localState.origin || !select.value;
+    });
+
+    btn?.addEventListener('click', () => {
+      const val = select.value;
+      if (!val || !localState.origin) return;
+
+      if (val.startsWith('group:')) {
+        const groupId = val.slice(6);
+        const group = (localState.settings?.groups || []).find(g => g.id === groupId);
+        if (group) {
+          sendCommand({
+            action: 'workspace-grant',
+            origin: localState.origin,
+            names: group.variables,
+            group: group.id
+          });
+        }
+      } else if (val.startsWith('var:')) {
+        const varName = val.slice(4);
+        sendCommand({
+          action: 'workspace-grant',
+          origin: localState.origin,
+          names: [varName]
+        });
+      }
+
+      select.value = '';
+      btn.disabled = true;
+    });
+  }
+
+  // Chat Form & Stop Action
+  function setupChat() {
+    const form = byId('chat-form');
+    const input = byId('chat-prompt-input');
+    const stopBtn = byId('chat-stop-btn');
+
+    form?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const prompt = input.value.trim();
+      if (!prompt) return;
+      input.value = '';
+      sendCommand({ action: 'workspace-send', prompt });
+    });
+
+    stopBtn?.addEventListener('click', () => {
+      sendCommand({ action: 'workspace-stop' });
+    });
+  }
+
+  // Add Variable Modal
+  function setupAddVariableModal() {
+    const dialog = byId('add-variable-modal');
+    const form = byId('add-variable-form');
+    const kindSelect = byId('new-var-kind');
+    const scopeSelect = byId('new-var-scope');
+    const originInput = byId('new-var-origin');
+    const originStar = byId('origin-required-star');
+    const originHint = byId('new-var-origin-hint');
+
+    dialog.addEventListener('close', () => { byId('new-var-val').value = ''; });
+    byId('open-add-var-btn')?.addEventListener('click', () => {
+      byId('new-var-name').value = '';
+      byId('new-var-desc').value = '';
+      byId('new-var-val').value = '';
+      if (localState.origin) {
+        originInput.value = localState.origin;
+      }
+      updateScopeRules();
+      dialog.showModal();
+    });
+
+    byId('close-add-var-btn')?.addEventListener('click', () => {
+      byId('new-var-val').value = '';
+      dialog.close();
+    });
+
+    byId('close-add-var-x')?.addEventListener('click', () => {
+      byId('new-var-val').value = '';
+      dialog.close();
+    });
+
+    byId('new-var-use-current-origin')?.addEventListener('click', () => {
+      if (localState.origin) {
+        originInput.value = localState.origin;
       }
     });
-    byId('annotations').replaceChildren(marks);
-  }
-  function renderFrame(update) {
-    if (!activePhases.has(state.phase) || update.revision !== revision) return;
-    const frame = update.frame;
-    if (frame.image === committedImage) {
-      if (pendingImage) cancelDecode();
-      renderAnnotations(frame); return;
+
+    function updateScopeRules() {
+      const kind = kindSelect.value;
+      const isCred = kind === 'password' || kind === 'username';
+      if (isCred) {
+        scopeSelect.value = 'site';
+        const profileOpt = scopeSelect.querySelector('option[value="profile"]');
+        if (profileOpt) profileOpt.disabled = true;
+      } else {
+        const profileOpt = scopeSelect.querySelector('option[value="profile"]');
+        if (profileOpt) profileOpt.disabled = false;
+      }
+
+      const isSite = scopeSelect.value === 'site';
+      originInput.required = isSite;
+      if (originStar) originStar.hidden = !isSite;
+      if (originHint) {
+        originHint.textContent = isSite ? 'Mandatory for site-bound variables (e.g. https://amazon.in)' : 'Optional for shared profile variables';
+      }
     }
-    if (pendingFrame?.image === frame.image) { pendingFrame = frame; return; }
-    cancelDecode();
-    const token = generation; const image = new Image();
-    pendingImage = image; pendingFrame = frame; pendingRevision = revision;
-    image.onload = () => {
-      if (token !== generation || pendingRevision !== revision || !activePhases.has(state.phase)) return;
-      const decoded = pendingFrame;
-      if (!decoded) return;
-      const aspect = decoded.width + ' / ' + decoded.height;
-      if (byId('frame-shell').style.aspectRatio !== aspect) byId('frame-shell').style.aspectRatio = aspect;
-      byId('frame-image').src = image.src;
-      committedImage = decoded.image;
-      renderAnnotations(decoded);
-      byId('canvas').hidden = false; byId('frame-empty').hidden = true;
-      byId('frame-status').textContent = 'Live · Owner only';
-      pendingImage = null; pendingFrame = null;
-    };
-    image.onerror = () => {
-      if (token !== generation || pendingRevision !== revision || !activePhases.has(state.phase)) return;
-      clearFrame(); void send({ action: 'stop' });
-    };
-    image.src = 'data:image/png;base64,' + frame.image;
+
+    kindSelect.addEventListener('change', updateScopeRules);
+    scopeSelect.addEventListener('change', updateScopeRules);
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = byId('new-var-name').value.trim();
+      const description = byId('new-var-desc').value.trim();
+      const valInput = byId('new-var-val');
+      const value = valInput.value;
+      const kind = kindSelect.value;
+      const scope = scopeSelect.value;
+      const origin = originInput.value.trim() || (scope === 'profile' ? 'https://profile.auto-mate.invalid' : '');
+
+      if (scope === 'site' && !origin) {
+        showError('Origin URL is mandatory for site-bound variables.');
+        return;
+      }
+
+      valInput.value = '';
+      dialog.close();
+
+      sendCommand({
+        action: 'workspace-save-variable',
+        input: {
+          name,
+          description,
+          value,
+          kind,
+          scope,
+          origin
+        }
+      });
+    });
   }
-  window.autoMateAutofillUpdate = update => {
-    if (update.kind === 'state') renderState(update.state);
-    else if (update.kind === 'frame') renderFrame(update);
-  };
-  function stopPolling() { polling = false; pollGeneration++; clearTimeout(pollTimer); pollController?.abort(); }
-  function resumePolling() {
-    if (!hostedTransport || !csrfToken || document.hidden || polling) return;
-    connectionLost = true; buttons(); updateSequence = 0;
-    polling = true; pollGeneration++;
-    void pollUpdates(pollGeneration);
+
+  // Settings Modal
+  function setupSettingsModal() {
+    const dialog = byId('settings-modal');
+    const presetSelect = byId('setting-model-preset');
+    const modeSelect = byId('setting-model-mode');
+    const endpointInput = byId('setting-model-endpoint');
+    const apiKeyInput = byId('setting-model-apikey');
+    const modelNameInput = byId('setting-model-name');
+    const datalist = byId('model-presets-datalist');
+    const clearKeyBtn = byId('setting-clear-apikey-btn');
+    dialog.addEventListener('close', () => { apiKeyInput.value = ''; });
+    if (!isNative) {
+      for (const value of ['ollama', 'lmstudio']) presetSelect.querySelector(`option[value="${value}"]`).disabled = true;
+      modeSelect.querySelector('option[value="local"]').disabled = true;
+    }
+    const keyStatus = byId('setting-key-status');
+
+    function updateDatalist(presetKey) {
+      const preset = PROVIDER_PRESETS[presetKey];
+      datalist.replaceChildren();
+      if (preset && preset.models) {
+        for (const m of preset.models) {
+          const opt = document.createElement('option');
+          opt.value = m;
+          datalist.appendChild(opt);
+        }
+      }
+    }
+
+    presetSelect.addEventListener('change', () => {
+      const presetKey = presetSelect.value;
+      const preset = PROVIDER_PRESETS[presetKey];
+      if (preset) {
+        modeSelect.value = preset.mode;
+        endpointInput.value = preset.endpoint;
+        updateDatalist(presetKey);
+        modelNameInput.value = '';
+        modelNameInput.placeholder = 'Enter the exact model ID served by this provider';
+      }
+    });
+
+    clearKeyBtn.addEventListener('click', () => {
+      clearApiKeyRequested = true;
+      apiKeyInput.value = '';
+      apiKeyInput.placeholder = 'API key will be removed on Save';
+      keyStatus.textContent = 'To be cleared';
+      keyStatus.className = 'key-status-badge';
+    });
+
+    byId('open-settings-btn')?.addEventListener('click', () => {
+      clearApiKeyRequested = false;
+      apiKeyInput.value = '';
+
+      const s = localState.settings;
+      if (s && s.model) {
+        presetSelect.value = s.model.preset || 'openai';
+        modeSelect.value = s.model.mode || 'cloud';
+        endpointInput.value = s.model.endpoint || '';
+        modelNameInput.value = s.model.model || '';
+        updateDatalist(presetSelect.value);
+
+        if (s.model.keyConfigured) {
+          keyStatus.textContent = 'Configured on host';
+          keyStatus.className = 'key-status-badge configured';
+          apiKeyInput.placeholder = '●●●●●●●● (Leave blank to keep unchanged)';
+        } else {
+          keyStatus.textContent = 'Not configured';
+          keyStatus.className = 'key-status-badge';
+          apiKeyInput.placeholder = 'sk-... (Enter API key)';
+        }
+      }
+
+      if (s && s.navigation) {
+        const radios = document.getElementsByName('nav-mode');
+        for (const r of radios) {
+          r.checked = r.value === s.navigation.mode;
+        }
+        byId('setting-nav-domains').value = (s.navigation.domains || []).join(', ');
+      }
+
+      if (s && s.memory) {
+        byId('setting-memory-toggle').checked = !!s.memory.enabled;
+        byId('setting-memory-content').value = s.memory.content || '';
+      }
+
+      localSettingsDraft = {
+        groups: s.groups ? JSON.parse(JSON.stringify(s.groups)) : []
+      };
+      renderSettingsGroups(localSettingsDraft.groups);
+      populateGroupVarChecklist(localState.variables);
+
+      dialog.showModal();
+    });
+
+    byId('close-settings-btn')?.addEventListener('click', () => {
+      apiKeyInput.value = '';
+      dialog.close();
+    });
+
+    byId('close-settings-x')?.addEventListener('click', () => {
+      apiKeyInput.value = '';
+      dialog.close();
+    });
+
+    byId('settings-form')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      const mode = modeSelect.value;
+      const preset = presetSelect.value;
+      const endpoint = endpointInput.value.trim();
+      const model = modelNameInput.value.trim();
+
+      const modelSettings = {
+        mode,
+        preset,
+        endpoint,
+        model
+      };
+
+      if (clearApiKeyRequested) {
+        modelSettings.apiKey = '';
+      } else if (apiKeyInput.value.trim()) {
+        modelSettings.apiKey = apiKeyInput.value.trim();
+      }
+
+      apiKeyInput.value = '';
+
+      let navMode = 'blacklist';
+      const radios = document.getElementsByName('nav-mode');
+      for (const r of radios) {
+        if (r.checked) navMode = r.value;
+      }
+
+      const domainList = byId('setting-nav-domains').value
+        .split(/[,\n]/)
+        .map(d => d.trim())
+        .filter(Boolean);
+
+      const memoryEnabled = byId('setting-memory-toggle').checked;
+      const memoryContent = byId('setting-memory-content').value;
+
+      const newSettings = {
+        model: modelSettings,
+        navigation: {
+          mode: navMode,
+          domains: domainList
+        },
+        memory: {
+          enabled: memoryEnabled,
+          content: memoryContent
+        },
+        groups: localSettingsDraft ? localSettingsDraft.groups : (localState.settings.groups || [])
+      };
+
+      dialog.close();
+      sendCommand({ action: 'workspace-settings', settings: newSettings });
+    });
+
+    byId('add-group-btn')?.addEventListener('click', () => {
+      const nameInput = byId('new-group-name');
+      const groupName = nameInput.value.trim();
+      if (!groupName) {
+        showError('Please enter a group name.');
+        return;
+      }
+
+      const checkedVars = [];
+      const checkboxes = byId('new-group-variables-select').querySelectorAll('input[type="checkbox"]:checked');
+      for (const cb of checkboxes) {
+        checkedVars.push(cb.value);
+      }
+
+      if (checkedVars.length === 0) {
+        showError('Please select at least one variable for this group.');
+        return;
+      }
+
+      if (!localSettingsDraft) localSettingsDraft = { groups: [] };
+      localSettingsDraft.groups.push({
+        id: 'grp_' + Date.now(),
+        name: groupName,
+        variables: checkedVars
+      });
+
+      nameInput.value = '';
+      for (const cb of checkboxes) cb.checked = false;
+      renderSettingsGroups(localSettingsDraft.groups);
+    });
   }
-  async function pollUpdates(generation) {
-    if (!polling || generation !== pollGeneration) return;
-    const controller = new AbortController();
-    pollController = controller;
-    const deadline = setTimeout(() => controller.abort(), 8000);
-    try {
-      const response = await fetch('/api/updates?after=' + updateSequence, { credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
-      if (response.status === 401) { stopPolling(); clearSecrets(); clearInformationDialog(); clearFrame(); window.location.replace('/login'); return; }
-      if (!response.ok) throw new Error('HOSTED_CONNECTION_FAILED');
-      const payload = await response.json();
-      if (!polling || generation !== pollGeneration) return;
-      if (!Number.isSafeInteger(payload.sequence) || payload.sequence < updateSequence || !Array.isArray(payload.updates)) throw new Error('HOSTED_UPDATE_INVALID');
-      const reconnecting = connectionLost;
-      connectionLost = false;
-      for (const update of payload.updates) window.autoMateAutofillUpdate(update);
-      updateSequence = payload.sequence;
-      if (reconnecting && !payload.updates.length) { byId('error').textContent = state.error || ''; byId('error').hidden = !state.error; buttons(); }
-    } catch {
-      if (!polling || generation !== pollGeneration) return;
-      connectionLost = true;
-      clearSecrets(); clearInformationDialog(); clearFrame(); localPermission = null; permissionSignature = ''; byId('permission-dialog').close();
-      byId('error').textContent = 'Host connection lost. Website authority is revoked after the reconnect grace period. No action is confirmed. Reconnecting…';
-      byId('error').hidden = false; buttons();
-    } finally {
-      clearTimeout(deadline);
-      if (polling && generation === pollGeneration) pollTimer = setTimeout(() => void pollUpdates(generation), 500);
+
+  function renderSettingsGroups(groups) {
+    const container = byId('settings-groups-list');
+    if (!container) return;
+    container.replaceChildren();
+
+    if (!groups || groups.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'empty-hint';
+      p.textContent = 'No variable groups configured.';
+      container.appendChild(p);
+      return;
+    }
+
+    for (let i = 0; i < groups.length; i++) {
+      const g = groups[i];
+      const item = document.createElement('div');
+      item.className = 'group-item-card';
+
+      const info = document.createElement('span');
+      info.textContent = `${g.name} (${g.variables.length} vars: ${g.variables.join(', ')})`;
+      item.appendChild(info);
+
+      const rmBtn = document.createElement('button');
+      rmBtn.type = 'button';
+      rmBtn.className = 'compact-button danger-btn';
+      rmBtn.textContent = 'Remove';
+      rmBtn.addEventListener('click', () => {
+        groups.splice(i, 1);
+        renderSettingsGroups(groups);
+      });
+      item.appendChild(rmBtn);
+
+      container.appendChild(item);
     }
   }
-  async function connectHosted() {
-    if (!hostedTransport) return;
-    const response = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' });
-    if (response.status === 401) { window.location.replace('/login'); return; }
-    if (!response.ok) throw new Error('HOSTED_CONNECTION_FAILED');
-    const session = await response.json();
-    csrfToken = session.csrfToken;
-    byId('hosted-user').textContent = 'Signed in: ' + session.username;
-    byId('hosted-session').hidden = false;
-    window.autoMateAutofill = async command => {
-      const result = await fetch('/api/command', { method: 'POST', credentials: 'same-origin', cache: 'no-store',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken }, body: JSON.stringify(command) });
-      if (result.status === 401) { stopPolling(); clearSecrets(); clearInformationDialog(); clearFrame(); window.location.replace('/login'); }
-      if (!result.ok) throw new Error('HOSTED_COMMAND_FAILED');
-    };
-    resumePolling();
+
+  function populateGroupVarChecklist(variables) {
+    const container = byId('new-group-variables-select');
+    if (!container) return;
+    container.replaceChildren();
+
+    if (!variables || variables.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'empty-hint';
+      p.textContent = 'No variables available to select.';
+      container.appendChild(p);
+      return;
+    }
+
+    for (const v of variables) {
+      const label = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = v.name;
+      label.appendChild(cb);
+      const span = document.createElement('span');
+      span.textContent = `${v.name} (${v.kind})`;
+      label.appendChild(span);
+      container.appendChild(label);
+    }
   }
-  document.addEventListener('visibilitychange', () => {
-    if (!hostedTransport) return;
-    if (document.hidden) {
-      stopPolling(); connectionLost = true;
-      clearSecrets(); clearInformationDialog(); clearFrame(); localPermission = null; permissionSignature = ''; byId('permission-dialog').close(); buttons();
-    } else resumePolling();
-  });
-  byId('hosted-logout').addEventListener('click', async () => {
-    stopPolling();
-    clearSecrets(); clearInformationDialog(); clearFrame(); localPermission = null; byId('permission-dialog').close();
+
+  // Hosted Mode Initialization
+  async function initHosted() {
     try {
-      const result = await fetch('/api/logout', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrfToken } });
-      if (!result.ok && result.status !== 401) throw new Error('LOGOUT_FAILED');
-      window.location.replace('/login');
-    } catch { connectionLost = true; buttons(); byId('error').textContent = 'Sign-out could not be confirmed. Website authority expires without polling; contact the operator and do not leave this session unattended.'; byId('error').hidden = false; }
-  });
-  switchVaultKind();
-  if (hostedTransport) { state.busy = true; buttons(); void connectHosted().catch(() => { byId('error').textContent = 'Cannot connect to the authenticated host. Reload or sign in again.'; byId('error').hidden = false; }); }
+      const res = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' });
+      if (!res.ok) {
+        if (res.status === 401) {
+          window.location.replace('/login');
+          return;
+        }
+        throw new Error(`Session request returned HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      csrfToken = data.csrfToken;
+
+      const sessionBox = byId('hosted-session');
+      if (sessionBox) sessionBox.hidden = false;
+      const userBox = byId('hosted-user');
+      if (userBox) userBox.textContent = data.username;
+
+      byId('hosted-logout')?.addEventListener('click', async () => {
+        try {
+          await fetch('/api/logout', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': csrfToken }
+          });
+        } finally {
+          window.location.replace('/login');
+        }
+      });
+
+      await sendCommand({ action: 'workspace-init' });
+      startPolling();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  // Native Mode Initialization
+  function initNative() {
+    sendCommand({ action: 'workspace-init' });
+  }
+
+  // App Entry Point
+  function init() {
+    byId('global-error-dismiss')?.addEventListener('click', () => showError(''));
+    setupTabs();
+    setupQuickGrant();
+    setupChat();
+    setupAddVariableModal();
+    setupSettingsModal();
+
+    if (isNative) {
+      initNative();
+    } else {
+      initHosted();
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();
