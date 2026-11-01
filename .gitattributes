@@ -1,0 +1,2 @@
+# Preserve downloaded third-party notices exactly; source manifests record their hashes.
+platforms/windows/launcher/licenses/** -text

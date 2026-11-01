@@ -1,0 +1,1458 @@
+{
+  "title": "Bun Runtime Third-Party Licenses and Materials Index",
+  "bunVersion": "1.4.4",
+  "targetArchitecture": "Windows 11 x64 (AMD64)",
+  "generatedAt": "2026-11-01T06:49:47.050Z",
+  "canonicalCommonLicenses": "licenses/common (Apache-2.0, LGPL-3.0, LGPL-2.1, LGPL-2.0, GPL-3.0, GPL-2.0)",
+  "summary": {
+    "totalFiles": 144,
+    "rootFiles": 1,
+    "webkitFiles": 9,
+    "linkedLibraryFiles": 36,
+    "polyfillFiles": 23,
+    "portedLibraryFiles": 75
+  },
+  "unresolvedMaterials": [],
+  "files": [
+    {
+      "relativePath": "LICENSE.md",
+      "name": "Bun Runtime (verbatim)",
+      "category": "root",
+      "license": "MIT, LGPL-2.1 (WebKit), linked/ported licenses",
+      "versionBasis": "Bun v1.4.4 official release",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/bun/bun-v1.4.4/LICENSE.md",
+      "sha256": "362fe32c954ec829240bd7429c53d705eef08c6bfa45ffc2d02005f857cba4dd",
+      "bytes": 14778
+    },
+    {
+      "relativePath": "linked/boringssl/LICENSE",
+      "name": "boringssl",
+      "category": "linked",
+      "license": "several licenses (Apache-2.0, OpenSSL, SSLeay, ISC, MIT, BSD)",
+      "versionBasis": "commit 41bf9b59c2ebf277a7aa427e1ecad5cc80dd4d4f",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/boringssl/41bf9b59c2ebf277a7aa427e1ecad5cc80dd4d4f/LICENSE",
+      "sha256": "827c8d8fc207c2392794eef9e00fe246f9f61fdcc132556c275be3dd8c3cd97f",
+      "bytes": 13115
+    },
+    {
+      "relativePath": "linked/brotli/LICENSE",
+      "name": "brotli",
+      "category": "linked",
+      "license": "MIT",
+      "versionBasis": "commit db24a98aed38a16de78cc05ca15cdd8dc2a0d92d",
+      "originUrl": "https://raw.githubusercontent.com/google/brotli/db24a98aed38a16de78cc05ca15cdd8dc2a0d92d/LICENSE",
+      "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
+      "bytes": 1084
+    },
+    {
+      "relativePath": "linked/c-ares/LICENSE.md",
+      "name": "c-ares",
+      "category": "linked",
+      "license": "MIT",
+      "versionBasis": "commit c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab",
+      "originUrl": "https://raw.githubusercontent.com/c-ares/c-ares/c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab/LICENSE.md",
+      "sha256": "460f5e768fda3752ca2169a95df062578a10fb126bfd65f3b9b1a1bed2f84807",
+      "bytes": 1211
+    },
+    {
+      "relativePath": "linked/hdrhistogram/LICENSE.txt",
+      "name": "hdrhistogram",
+      "category": "linked",
+      "license": "BSD-2-Clause",
+      "versionBasis": "commit 18c7a324383dded1451d15621cd018b0048057d0",
+      "originUrl": "https://raw.githubusercontent.com/HdrHistogram/HdrHistogram_c/18c7a324383dded1451d15621cd018b0048057d0/LICENSE.txt",
+      "sha256": "93a583ec58cd981232ec6fab797ff6f17f350c97b83ae0700b2d9350c91028af",
+      "bytes": 2208
+    },
+    {
+      "relativePath": "linked/highway/LICENSE",
+      "name": "highway",
+      "category": "linked",
+      "license": "Apache-2.0",
+      "versionBasis": "commit 2607d3b5b0113992fe84d3848859eae13b3b52c1",
+      "originUrl": "https://raw.githubusercontent.com/google/highway/2607d3b5b0113992fe84d3848859eae13b3b52c1/LICENSE",
+      "sha256": "e340270d4f64384569a91d546acb5b094d69ce47f0c015db77abb74dc6f815af",
+      "bytes": 20785
+    },
+    {
+      "relativePath": "linked/libarchive/COPYING",
+      "name": "libarchive",
+      "category": "linked",
+      "license": "several licenses (BSD-2-Clause, Public Domain)",
+      "versionBasis": "commit 27cbc7827172698143e440801fc0ba39ccb4f1f5",
+      "originUrl": "https://raw.githubusercontent.com/libarchive/libarchive/27cbc7827172698143e440801fc0ba39ccb4f1f5/COPYING",
+      "sha256": "30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229",
+      "bytes": 3089
+    },
+    {
+      "relativePath": "linked/libbase64/LICENSE",
+      "name": "libbase64",
+      "category": "linked",
+      "license": "BSD-2-Clause",
+      "versionBasis": "master (HEAD)",
+      "originUrl": "https://raw.githubusercontent.com/aklomp/base64/master/LICENSE",
+      "sha256": "42871ad9f4e5e9255a4ec80b6c5ec9989bab6964693cf5fee6bb33f3afe39220",
+      "bytes": 1422
+    },
+    {
+      "relativePath": "linked/libdeflate/COPYING",
+      "name": "libdeflate",
+      "category": "linked",
+      "license": "MIT",
+      "versionBasis": "commit 92e6a0db9fa848d742f9eb286c92afc60f2c3dda",
+      "originUrl": "https://raw.githubusercontent.com/ebiggers/libdeflate/92e6a0db9fa848d742f9eb286c92afc60f2c3dda/COPYING",
+      "sha256": "4ad69099cb4374836fd27583d9991e2838cd86b6e4666ab26b2d32582c91e73a",
+      "bytes": 1078
+    },
+    {
+      "relativePath": "linked/libicu/LICENSE",
+      "name": "libicu",
+      "category": "linked",
+      "license": "Unicode-3.0",
+      "versionBasis": "Current upstream full license resolves icu4c/LICENSE indirection; Bun inventory identifies ICU 78.",
+      "originUrl": "https://raw.githubusercontent.com/unicode-org/icu/main/LICENSE",
+      "sha256": "d9cddbc029322307e3030b29d995b6a5d913b0bdf570c5dd9b4c74b224879d9e",
+      "bytes": 27717
+    },
+    {
+      "relativePath": "linked/libjpeg-turbo/LICENSE.md",
+      "name": "libjpeg-turbo",
+      "category": "linked",
+      "license": "BSD 3-Clause / IJG / zlib",
+      "versionBasis": "3.2.0 (commit c85e6b905bf237038faa936dab160ebfc5da0344)",
+      "originUrl": "https://raw.githubusercontent.com/libjpeg-turbo/libjpeg-turbo/c85e6b905bf237038faa936dab160ebfc5da0344/LICENSE.md",
+      "sha256": "ba6bceebcba0fdd35488477c2cca8c4632ce82c74dbfbc87d886ce6fc4433579",
+      "bytes": 6077
+    },
+    {
+      "relativePath": "linked/libjpeg-turbo/README.ijg",
+      "name": "libjpeg-turbo",
+      "category": "linked",
+      "license": "Independent JPEG Group License",
+      "versionBasis": "3.2.0 (commit c85e6b905bf237038faa936dab160ebfc5da0344)",
+      "originUrl": "https://raw.githubusercontent.com/libjpeg-turbo/libjpeg-turbo/c85e6b905bf237038faa936dab160ebfc5da0344/README.ijg",
+      "sha256": "75815e3bf6484201a3c3d17a1bbf10f2e8e3237f84df10a2357ea896db2a81d6",
+      "bytes": 12799
+    },
+    {
+      "relativePath": "linked/libspng/LICENSE",
+      "name": "libspng",
+      "category": "linked",
+      "license": "BSD-2-Clause",
+      "versionBasis": "commit fb768002d4288590083a476af628e51c3f1d47cd",
+      "originUrl": "https://raw.githubusercontent.com/randy408/libspng/fb768002d4288590083a476af628e51c3f1d47cd/LICENSE",
+      "sha256": "0622b0794d0fecde47d743f1bb70a03e6fdf082be8e71f39de672ed995d96ff9",
+      "bytes": 1341
+    },
+    {
+      "relativePath": "linked/libuv/LICENSE",
+      "name": "libuv",
+      "category": "linked",
+      "license": "MIT",
+      "versionBasis": "commit 8023581113b276e7c1aee3f82da57ca0893faab1",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/libuv/8023581113b276e7c1aee3f82da57ca0893faab1/LICENSE",
+      "sha256": "16de0c32b265cb7d46a6d3bd614f259dd4d693a5e26b3407b04aae8d73041f0c",
+      "bytes": 1079
+    },
+    {
+      "relativePath": "linked/libwebp/COPYING",
+      "name": "libwebp",
+      "category": "linked",
+      "license": "BSD-3-Clause",
+      "versionBasis": "v1.6.0 (tag b7e29b9d75bd31422b00c2a446d49d7af06c328d)",
+      "originUrl": "https://raw.githubusercontent.com/webmproject/libwebp/v1.6.0/COPYING",
+      "sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf",
+      "bytes": 1496
+    },
+    {
+      "relativePath": "linked/libwebp/PATENTS",
+      "name": "libwebp",
+      "category": "linked",
+      "license": "Additional IP Rights Grant (Patents)",
+      "versionBasis": "v1.6.0 (tag b7e29b9d75bd31422b00c2a446d49d7af06c328d)",
+      "originUrl": "https://raw.githubusercontent.com/webmproject/libwebp/v1.6.0/PATENTS",
+      "sha256": "cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c",
+      "bytes": 1436
+    },
+    {
+      "relativePath": "linked/llvm-libcxxabi/LICENSE.TXT",
+      "name": "llvm-libcxxabi",
+      "category": "linked",
+      "license": "Apache-2.0 with LLVM-exception",
+      "versionBasis": "llvmorg-19.1.0",
+      "originUrl": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-19.1.0/libcxxabi/LICENSE.TXT",
+      "sha256": "e2b35be49f7284a45b7baca8fc7b3ab7440e7902392b2528a457816b5bb2a15c",
+      "bytes": 16706
+    },
+    {
+      "relativePath": "linked/lol-html/LICENSE",
+      "name": "lol-html",
+      "category": "linked",
+      "license": "BSD-3-Clause",
+      "versionBasis": "commit 725ce499aa9b71e38b7a2d0a9fbb6d7294a4079e",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/lol-html/725ce499aa9b71e38b7a2d0a9fbb6d7294a4079e/LICENSE",
+      "sha256": "e4ddaa9d7391bb9536fcb8c59b570a8b85a0bf6da54df5b3b26f098f6f99c9cc",
+      "bytes": 1487
+    },
+    {
+      "relativePath": "linked/ls-hpack/LICENSE",
+      "name": "ls-hpack",
+      "category": "linked",
+      "license": "MIT",
+      "versionBasis": "commit cf0f70dd10b352194c97448eb5d00b4aa484f531",
+      "originUrl": "https://raw.githubusercontent.com/litespeedtech/ls-hpack/cf0f70dd10b352194c97448eb5d00b4aa484f531/LICENSE",
+      "sha256": "0490f9666828ad1b6b5503102e7ebbe491451b7174511f3b6255caa967caf955",
+      "bytes": 1090
+    },
+    {
+      "relativePath": "linked/ls-qpack/LICENSE",
+      "name": "ls-qpack",
+      "category": "linked",
+      "license": "MIT",
+      "versionBasis": "commit 91567706c41c0d97ab8dc576873ecd472d7869fa",
+      "originUrl": "https://raw.githubusercontent.com/litespeedtech/ls-qpack/91567706c41c0d97ab8dc576873ecd472d7869fa/LICENSE",
+      "sha256": "bf66df64b9819a4f2b7093332e35111f16a1c013180b2c30dd456f682a9c63fd",
+      "bytes": 1090
+    },
+    {
+      "relativePath": "linked/lsquic/LICENSE",
+      "name": "lsquic",
+      "category": "linked",
+      "license": "MIT",
+      "versionBasis": "commit f812ceb9529e26717df78c6064a2ff648b949f3e",
+      "originUrl": "https://raw.githubusercontent.com/litespeedtech/lsquic/f812ceb9529e26717df78c6064a2ff648b949f3e/LICENSE",
+      "sha256": "9bc22643b3ea2b55c547c83e332253d04ba3df4f26696091e6fa9f7a1ccc65ef",
+      "bytes": 1090
+    },
+    {
+      "relativePath": "linked/lsquic/LICENSE.chrome",
+      "name": "lsquic",
+      "category": "linked",
+      "license": "BSD-3-Clause (Chromium proto-quic)",
+      "versionBasis": "commit f812ceb9529e26717df78c6064a2ff648b949f3e",
+      "originUrl": "https://raw.githubusercontent.com/litespeedtech/lsquic/f812ceb9529e26717df78c6064a2ff648b949f3e/LICENSE.chrome",
+      "sha256": "85d5dcb0d30ea89fa5922451957ff2a1a2c3c24f1ad2bb9ab23b5d6080763fc9",
+      "bytes": 1618
+    },
+    {
+      "relativePath": "linked/mimalloc/LICENSE",
+      "name": "mimalloc",
+      "category": "linked",
+      "license": "MIT",
+      "versionBasis": "commit 92ef6587c57b262f6e6abf513f7776a2f8d12aeb",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/mimalloc/92ef6587c57b262f6e6abf513f7776a2f8d12aeb/LICENSE",
+      "sha256": "82ade5d7d9b029044b5fbbc326207fc47c2d44ee4dd71e8a559c36d728217de9",
+      "bytes": 1096
+    },
+    {
+      "relativePath": "linked/picohttpparser/picohttpparser.h",
+      "name": "picohttpparser",
+      "category": "linked",
+      "license": "MIT OR Perl Artistic",
+      "versionBasis": "commit f4d94b48b31e0abae029ebeafcfd9ca0680ede58",
+      "originUrl": "https://raw.githubusercontent.com/h2o/picohttpparser/f4d94b48b31e0abae029ebeafcfd9ca0680ede58/picohttpparser.h",
+      "sha256": "1fc9074dd12418b2b91e55ef3a8279bccf8d3577b790dea6f2f908ab2a157f1c",
+      "bytes": 3970
+    },
+    {
+      "relativePath": "linked/rust-argon2/LICENSE-APACHE",
+      "name": "rust-argon2",
+      "category": "linked",
+      "license": "Apache-2.0",
+      "versionBasis": "commit ed81866f163f0c7026aa6fd8388adf37242eb32a",
+      "originUrl": "https://raw.githubusercontent.com/sru-systems/rust-argon2/ed81866f163f0c7026aa6fd8388adf37242eb32a/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "bytes": 10847
+    },
+    {
+      "relativePath": "linked/rust-argon2/LICENSE-MIT",
+      "name": "rust-argon2",
+      "category": "linked",
+      "license": "MIT",
+      "versionBasis": "commit ed81866f163f0c7026aa6fd8388adf37242eb32a",
+      "originUrl": "https://raw.githubusercontent.com/sru-systems/rust-argon2/ed81866f163f0c7026aa6fd8388adf37242eb32a/LICENSE-MIT",
+      "sha256": "26b997d1a1496df49cb1ad2cbe024714cd9126543c18e1bc6c7bbca1b3dc42b6",
+      "bytes": 1101
+    },
+    {
+      "relativePath": "linked/simdutf/LICENSE-APACHE",
+      "name": "simdutf",
+      "category": "linked",
+      "license": "Apache-2.0",
+      "versionBasis": "master (HEAD)",
+      "originUrl": "https://raw.githubusercontent.com/simdutf/simdutf/master/LICENSE-APACHE",
+      "sha256": "3d34610fc6b5e1b0bfe4e2f36171c2d62c28ef05cb8d704f5a0073be41a43b3d",
+      "bytes": 11330
+    },
+    {
+      "relativePath": "linked/simdutf/LICENSE-MIT",
+      "name": "simdutf",
+      "category": "linked",
+      "license": "MIT",
+      "versionBasis": "master (HEAD)",
+      "originUrl": "https://raw.githubusercontent.com/simdutf/simdutf/master/LICENSE-MIT",
+      "sha256": "fc8dbc04e03ad4efc08a647ffe7f995b811a95bc04c0e85a56d5277c6593fa5f",
+      "bytes": 1059
+    },
+    {
+      "relativePath": "linked/sqlite/sqlite3-blessing.txt",
+      "name": "sqlite",
+      "category": "linked",
+      "license": "Public Domain Blessing",
+      "versionBasis": "3.53.4 (amalgamation tracked in bun repo)",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/bun/bun-v1.4.4/src/jsc/bindings/sqlite/sqlite3.c",
+      "sha256": "2ddaa444091f9ca84195d1f9bb7111e43e3b257097e63717d404623897071c92",
+      "bytes": 253
+    },
+    {
+      "relativePath": "linked/tigerbeetle/LICENSE",
+      "name": "tigerbeetle",
+      "category": "linked",
+      "license": "Apache-2.0",
+      "versionBasis": "commit 532c8b70b9142c17e07737ab6d3da68d7500cbca",
+      "originUrl": "https://raw.githubusercontent.com/tigerbeetle/tigerbeetle/532c8b70b9142c17e07737ab6d3da68d7500cbca/LICENSE",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "bytes": 10174
+    },
+    {
+      "relativePath": "linked/tinycc/COPYING",
+      "name": "tinycc",
+      "category": "linked",
+      "license": "LGPL-2.1-only",
+      "versionBasis": "commit 05f0fafaa3be31e31d7b4b5c17dc60f62c991171",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/tinycc/05f0fafaa3be31e31d7b4b5c17dc60f62c991171/COPYING",
+      "sha256": "512d2d21b6b3384ba64781abb0208a1b87740bc31e2df48e2b206ddb7e4d5779",
+      "bytes": 26428
+    },
+    {
+      "relativePath": "linked/uSockets/LICENSE",
+      "name": "uSockets",
+      "category": "linked",
+      "license": "Apache-2.0",
+      "versionBasis": "Bun v1.4.4 packages/bun-usockets",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/bun/bun-v1.4.4/packages/bun-usockets/LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357
+    },
+    {
+      "relativePath": "linked/uucode/LICENSE.md",
+      "name": "uucode",
+      "category": "linked",
+      "license": "MIT",
+      "versionBasis": "main (HEAD)",
+      "originUrl": "https://raw.githubusercontent.com/jacobsandlund/uucode/main/LICENSE.md",
+      "sha256": "312e901e142be2477b4ca859e9311f9e3f80d33372991759b7921c1893605f33",
+      "bytes": 1298
+    },
+    {
+      "relativePath": "linked/uWebSockets/LICENSE",
+      "name": "uWebSockets",
+      "category": "linked",
+      "license": "Apache-2.0",
+      "versionBasis": "Bun v1.4.4 packages/bun-uws",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/bun/bun-v1.4.4/packages/bun-uws/LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357
+    },
+    {
+      "relativePath": "linked/zlib-ng/LICENSE.md",
+      "name": "zlib-ng",
+      "category": "linked",
+      "license": "Zlib",
+      "versionBasis": "commit 12731092979c6d07f42da27da673a9f6c7b13586",
+      "originUrl": "https://raw.githubusercontent.com/zlib-ng/zlib-ng/12731092979c6d07f42da27da673a9f6c7b13586/LICENSE.md",
+      "sha256": "6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee",
+      "bytes": 867
+    },
+    {
+      "relativePath": "linked/zstd/COPYING",
+      "name": "zstd",
+      "category": "linked",
+      "license": "GPL-2.0-only",
+      "versionBasis": "commit f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+      "originUrl": "https://raw.githubusercontent.com/facebook/zstd/f8745da6ff1ad1e7bab384bd1f9d742439278e99/COPYING",
+      "sha256": "f9c375a1be4a41f7b70301dd83c91cb89e41567478859b77eef375a52d782505",
+      "bytes": 18091
+    },
+    {
+      "relativePath": "linked/zstd/LICENSE",
+      "name": "zstd",
+      "category": "linked",
+      "license": "BSD-3-Clause",
+      "versionBasis": "commit f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+      "originUrl": "https://raw.githubusercontent.com/facebook/zstd/f8745da6ff1ad1e7bab384bd1f9d742439278e99/LICENSE",
+      "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8",
+      "bytes": 1549
+    },
+    {
+      "relativePath": "polyfills/acorn-walk/LICENSE",
+      "name": "acorn-walk",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "acorn-walk (master)",
+      "originUrl": "https://raw.githubusercontent.com/acornjs/acorn/master/acorn-walk/LICENSE",
+      "sha256": "c2d8184ea9becd063aa40be243e8c6ec2c4f72828fdfe4b0752664ef73e96ed3",
+      "bytes": 1099
+    },
+    {
+      "relativePath": "polyfills/acorn/LICENSE",
+      "name": "acorn",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "acorn (master)",
+      "originUrl": "https://raw.githubusercontent.com/acornjs/acorn/master/acorn/LICENSE",
+      "sha256": "76a876cf886ff9be2a8b5e2e86514fed06223c8c9f0c1e9ee9606e93841e00b7",
+      "bytes": 1099
+    },
+    {
+      "relativePath": "polyfills/assert/LICENSE",
+      "name": "assert",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "^2.1.0 (src/node-fallbacks)",
+      "originUrl": "https://raw.githubusercontent.com/browserify/commonjs-assert/master/LICENSE",
+      "sha256": "6239c6144c31e58cf925c34483606969c555574d64ffa96518ab5d7f45c75d43",
+      "bytes": 1096
+    },
+    {
+      "relativePath": "polyfills/browserify-zlib/LICENSE",
+      "name": "browserify-zlib",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "^0.2.0 (src/node-fallbacks)",
+      "originUrl": "https://cdn.jsdelivr.net/npm/browserify-zlib@0.2.0/LICENSE",
+      "sha256": "ddd770379e07bf0574dfaa4485be80a23b3248b36d09f33ec79276c09b829daf",
+      "bytes": 3486
+    },
+    {
+      "relativePath": "polyfills/buffer/LICENSE",
+      "name": "buffer",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "buffer (master)",
+      "originUrl": "https://raw.githubusercontent.com/feross/buffer/master/LICENSE",
+      "sha256": "ed2e878b5cbcda860c7640ce99838e3d83d7cf5e8ad31fc57c11f313b685ae00",
+      "bytes": 2306
+    },
+    {
+      "relativePath": "polyfills/constants-browserify/LICENSE.md",
+      "name": "constants-browserify",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "constants-browserify 1.0.0",
+      "originUrl": "https://raw.githubusercontent.com/juliangruber/constants-browserify/master/README.md",
+      "sha256": "6c26c971177af25fd322128f0e19f8b4897298bb9faf6e05e9c6423cd3e74c63",
+      "bytes": 1862
+    },
+    {
+      "relativePath": "polyfills/crypto-browserify/LICENSE",
+      "name": "crypto-browserify",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "^3.12.1 (src/node-fallbacks)",
+      "originUrl": "https://cdn.jsdelivr.net/npm/crypto-browserify@3.12.1/LICENSE",
+      "sha256": "6134c69bc22c8289252e70de3af20bd67071233459055be74d83acfcc4865e7e",
+      "bytes": 1087
+    },
+    {
+      "relativePath": "polyfills/domain-browser/LICENSE.md",
+      "name": "domain-browser",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "^4.23.0 (src/node-fallbacks)",
+      "originUrl": "https://raw.githubusercontent.com/bevry/domain-browser/master/LICENSE.md",
+      "sha256": "5fdbfb4ce1eb958139649b3fb9be91bc8d0780eaed709351f50d0255abac30a4",
+      "bytes": 9032
+    },
+    {
+      "relativePath": "polyfills/events/LICENSE",
+      "name": "events",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "events (master)",
+      "originUrl": "https://raw.githubusercontent.com/browserify/events/master/LICENSE",
+      "sha256": "631987b7616a325a5b97566c232418481ddf7dbb5ecadefb991e791876cc2599",
+      "bytes": 1081
+    },
+    {
+      "relativePath": "polyfills/https-browserify/LICENSE",
+      "name": "https-browserify",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "^1.0.0 (src/node-fallbacks)",
+      "originUrl": "https://cdn.jsdelivr.net/npm/https-browserify@1.0.0/LICENSE",
+      "sha256": "ff151c00207c908581639851dd8504ce4255be0650b2b236edec2aa90342b0cd",
+      "bytes": 1103
+    },
+    {
+      "relativePath": "polyfills/os-browserify/LICENSE",
+      "name": "os-browserify",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "os-browserify (master)",
+      "originUrl": "https://raw.githubusercontent.com/CoderPuppy/os-browserify/master/LICENSE",
+      "sha256": "d25d1d6d28c35cb6f358e2833e405c4e53fec2fa24d156323ddea5cd438d3407",
+      "bytes": 1077
+    },
+    {
+      "relativePath": "polyfills/path-browserify/LICENSE",
+      "name": "path-browserify",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "path-browserify (master)",
+      "originUrl": "https://raw.githubusercontent.com/browserify/path-browserify/master/LICENSE",
+      "sha256": "a22b9d5763f574e5db347c30acc0b33eaf4846767c03d2e27d012e864e79a824",
+      "bytes": 1071
+    },
+    {
+      "relativePath": "polyfills/process/LICENSE",
+      "name": "process",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "node-process (master)",
+      "originUrl": "https://raw.githubusercontent.com/defunctzombie/node-process/master/LICENSE",
+      "sha256": "59a400d04c5078579acc27ddd6452c1bdf763f9506e01364700935fbb1a7c91b",
+      "bytes": 1098
+    },
+    {
+      "relativePath": "polyfills/punycode/LICENSE-MIT.txt",
+      "name": "punycode",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "^2.3.1 (src/node-fallbacks)",
+      "originUrl": "https://raw.githubusercontent.com/mathiasbynens/punycode.js/master/LICENSE-MIT.txt",
+      "sha256": "483acb265f182907d1caf6cff9c16c96f31325ed23792832cc5d8b12d5f88c8a",
+      "bytes": 1077
+    },
+    {
+      "relativePath": "polyfills/querystring-es3/License.md",
+      "name": "querystring-es3",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "^1.0.0-0 (src/node-fallbacks)",
+      "originUrl": "https://raw.githubusercontent.com/mike-spainhower/querystring/master/License.md",
+      "sha256": "cb72d9714ddc21e758d63f423be0caddf909d23ccbb10a2f5201a870818e4f57",
+      "bytes": 1081
+    },
+    {
+      "relativePath": "polyfills/stream-browserify/LICENSE",
+      "name": "stream-browserify",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "stream-browserify (master)",
+      "originUrl": "https://raw.githubusercontent.com/browserify/stream-browserify/master/LICENSE",
+      "sha256": "96e5193183476a03da6667d217ce14110191d26ee105338086e94339edf40d5a",
+      "bytes": 1066
+    },
+    {
+      "relativePath": "polyfills/stream-http/LICENSE",
+      "name": "stream-http",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "^3.2.0 (src/node-fallbacks)",
+      "originUrl": "https://cdn.jsdelivr.net/npm/stream-http@3.2.0/LICENSE",
+      "sha256": "a0e6357a5e8ea65827addeb383e0948a1874d2f46bc7feaf6349b7a376ed6e98",
+      "bytes": 1086
+    },
+    {
+      "relativePath": "polyfills/string_decoder/LICENSE",
+      "name": "string_decoder",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "^1.3.0 (src/node-fallbacks)",
+      "originUrl": "https://raw.githubusercontent.com/nodejs/string_decoder/master/LICENSE",
+      "sha256": "11f2aafb37d06b3ee5bdaf06e9811141d0da05263c316f3d627f45c20d43261b",
+      "bytes": 2338
+    },
+    {
+      "relativePath": "polyfills/timers-browserify/LICENSE.md",
+      "name": "timers-browserify",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "timers-browserify (master)",
+      "originUrl": "https://raw.githubusercontent.com/jryans/timers-browserify/master/LICENSE.md",
+      "sha256": "e1961ff0d610b2cdc10ecca4a23909fc5b9116c096eb45ee463eb0d7b9df5e7a",
+      "bytes": 1241
+    },
+    {
+      "relativePath": "polyfills/tty-browserify/LICENSE",
+      "name": "tty-browserify",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "tty-browserify (master)",
+      "originUrl": "https://raw.githubusercontent.com/browserify/tty-browserify/master/LICENSE",
+      "sha256": "3a62887f73cd035ac1068bc0127ce94291f7a03843391f56df3520e2ca2037f8",
+      "bytes": 1036
+    },
+    {
+      "relativePath": "polyfills/url/LICENSE",
+      "name": "url",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "node-url (master)",
+      "originUrl": "https://raw.githubusercontent.com/defunctzombie/node-url/master/LICENSE",
+      "sha256": "00bfc53d658b2173d23e8c2a0f52332a5cfc6044525dafc5ecbe9a733bc3a49d",
+      "bytes": 1104
+    },
+    {
+      "relativePath": "polyfills/util/LICENSE",
+      "name": "util",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "node-util (master)",
+      "originUrl": "https://raw.githubusercontent.com/browserify/node-util/master/LICENSE",
+      "sha256": "6239c6144c31e58cf925c34483606969c555574d64ffa96518ab5d7f45c75d43",
+      "bytes": 1096
+    },
+    {
+      "relativePath": "polyfills/vm-browserify/LICENSE",
+      "name": "vm-browserify",
+      "category": "polyfill",
+      "license": "MIT",
+      "versionBasis": "vm-browserify (master)",
+      "originUrl": "https://raw.githubusercontent.com/browserify/vm-browserify/master/LICENSE",
+      "sha256": "3a62887f73cd035ac1068bc0127ce94291f7a03843391f56df3520e2ca2037f8",
+      "bytes": 1036
+    },
+    {
+      "relativePath": "ported/acorn/LICENSE",
+      "name": "acorn",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (acornjs/acorn)",
+      "originUrl": "https://raw.githubusercontent.com/acornjs/acorn/master/acorn/LICENSE",
+      "sha256": "76a876cf886ff9be2a8b5e2e86514fed06223c8c9f0c1e9ee9606e93841e00b7",
+      "bytes": 1099
+    },
+    {
+      "relativePath": "ported/ajv/LICENSE",
+      "name": "ajv",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (ajv-validator/ajv)",
+      "originUrl": "https://raw.githubusercontent.com/ajv-validator/ajv/master/LICENSE",
+      "sha256": "a05350a88e318e4f5f2c2a1ff1e2e88daa4dd38e6e78b71cccae422bdc762cc3",
+      "bytes": 1090
+    },
+    {
+      "relativePath": "ported/angular-estree-parser/LICENSE",
+      "name": "angular-estree-parser",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (prettier/angular-estree-parser)",
+      "originUrl": "https://raw.githubusercontent.com/prettier/angular-estree-parser/master/LICENSE",
+      "sha256": "bc3c60953044b4ec92a85e49516b03da0ac7f0dde879f5359de700aeab4de0b7",
+      "bytes": 1106
+    },
+    {
+      "relativePath": "ported/angular-html-parser/LICENSE",
+      "name": "angular-html-parser",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (prettier/angular-html-parser)",
+      "originUrl": "https://raw.githubusercontent.com/prettier/angular-html-parser/main/LICENSE",
+      "sha256": "15e77c4692114f87c2020353626c868472c23954a4ed37ecc4c1522d14be1eb7",
+      "bytes": 1105
+    },
+    {
+      "relativePath": "ported/angular/LICENSE",
+      "name": "angular",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (angular/angular)",
+      "originUrl": "https://raw.githubusercontent.com/angular/angular/main/LICENSE",
+      "sha256": "15e77c4692114f87c2020353626c868472c23954a4ed37ecc4c1522d14be1eb7",
+      "bytes": 1105
+    },
+    {
+      "relativePath": "ported/aria-query/LICENSE",
+      "name": "aria-query",
+      "category": "ported",
+      "license": "Apache-2.0",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (A11yance/aria-query)",
+      "originUrl": "https://raw.githubusercontent.com/A11yance/aria-query/main/LICENSE",
+      "sha256": "c8df456c7ccba74b959087dff494d4ac2a12dfb0400c08b46b2494a08a000567",
+      "bytes": 10236
+    },
+    {
+      "relativePath": "ported/babel/LICENSE",
+      "name": "babel",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (babel/babel)",
+      "originUrl": "https://raw.githubusercontent.com/babel/babel/main/LICENSE",
+      "sha256": "117da2af0d4ce0fe1c8e19b5cff9dcd806adf973d328d27b11d4448c4ff24f76",
+      "bytes": 1106
+    },
+    {
+      "relativePath": "ported/biome/LICENSE-MIT",
+      "name": "biome",
+      "category": "ported",
+      "license": "MIT OR Apache-2.0",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (biomejs/biome)",
+      "originUrl": "https://raw.githubusercontent.com/biomejs/biome/main/LICENSE-MIT",
+      "sha256": "35365b6285e1f8cac61549f321befdbbe6139bf1e3d7ef6ccf1f1294ab015202",
+      "bytes": 1174
+    },
+    {
+      "relativePath": "ported/diff-match-patch/LICENSE",
+      "name": "diff-match-patch",
+      "category": "ported",
+      "license": "Apache-2.0",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (google/diff-match-patch)",
+      "originUrl": "https://raw.githubusercontent.com/google/diff-match-patch/master/LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "bytes": 11358
+    },
+    {
+      "relativePath": "ported/editorconfig-core-js-without-wasm/LICENSE",
+      "name": "editorconfig-core-js-without-wasm",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (fisker/editorconfig-core-js-without-wasm)",
+      "originUrl": "https://raw.githubusercontent.com/fisker/editorconfig-core-js-without-wasm/main/LICENSE",
+      "sha256": "bc6944d7fe185cc5185998482def16aeaa83f96405599bfd388a5611718139a5",
+      "bytes": 1068
+    },
+    {
+      "relativePath": "ported/emoji-regex/LICENSE-MIT.txt",
+      "name": "emoji-regex",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (mathiasbynens/emoji-regex)",
+      "originUrl": "https://raw.githubusercontent.com/mathiasbynens/emoji-regex/main/LICENSE-MIT.txt",
+      "sha256": "483acb265f182907d1caf6cff9c16c96f31325ed23792832cc5d8b12d5f88c8a",
+      "bytes": 1077
+    },
+    {
+      "relativePath": "ported/esbuild/LICENSE.md",
+      "name": "esbuild",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (evanw/esbuild)",
+      "originUrl": "https://raw.githubusercontent.com/evanw/esbuild/main/LICENSE.md",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
+      "bytes": 1069
+    },
+    {
+      "relativePath": "ported/eslint-plugin-es-x/LICENSE",
+      "name": "eslint-plugin-es-x",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (eslint-community/eslint-plugin-es-x)",
+      "originUrl": "https://raw.githubusercontent.com/eslint-community/eslint-plugin-es-x/master/LICENSE",
+      "sha256": "fcf6eabf68ca96988a6b506b4fdc6cc32535d80eb2e11c79724af5ac6f50262b",
+      "bytes": 1071
+    },
+    {
+      "relativePath": "ported/eslint-plugin-import/LICENSE",
+      "name": "eslint-plugin-import",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (import-js/eslint-plugin-import)",
+      "originUrl": "https://raw.githubusercontent.com/import-js/eslint-plugin-import/main/LICENSE",
+      "sha256": "7829efc4266fad5f57f7fc489429a3b35d0c62183c0bd617ef6591f64c980c92",
+      "bytes": 1078
+    },
+    {
+      "relativePath": "ported/eslint-plugin-jest/LICENSE",
+      "name": "eslint-plugin-jest",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (jest-community/eslint-plugin-jest)",
+      "originUrl": "https://raw.githubusercontent.com/jest-community/eslint-plugin-jest/main/LICENSE",
+      "sha256": "e2ee1d888c2048a71a8d581da664cae00dc9fc64bf5627dca44518ae08cabe9d",
+      "bytes": 1069
+    },
+    {
+      "relativePath": "ported/eslint-plugin-jsx-a11y/LICENSE.md",
+      "name": "eslint-plugin-jsx-a11y",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (jsx-eslint/eslint-plugin-jsx-a11y)",
+      "originUrl": "https://raw.githubusercontent.com/jsx-eslint/eslint-plugin-jsx-a11y/main/LICENSE.md",
+      "sha256": "82b19019e25e266a310ef46800b3af726136a3cee79af8812dc83ca0b045afae",
+      "bytes": 1077
+    },
+    {
+      "relativePath": "ported/eslint-plugin-n/LICENSE",
+      "name": "eslint-plugin-n",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (eslint-community/eslint-plugin-n)",
+      "originUrl": "https://raw.githubusercontent.com/eslint-community/eslint-plugin-n/master/LICENSE",
+      "sha256": "97d87142793695cd73243de7258694abe85b3b6060fca7f247b0a2afa8219678",
+      "bytes": 1082
+    },
+    {
+      "relativePath": "ported/eslint-plugin-next/license.md",
+      "name": "eslint-plugin-next",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (vercel/next.js)",
+      "originUrl": "https://raw.githubusercontent.com/vercel/next.js/canary/license.md",
+      "sha256": "ee765244e2d59f5234d474f62e0766fa0c8b99af967fdd4c0cb8dcb0c76ea224",
+      "bytes": 1079
+    },
+    {
+      "relativePath": "ported/eslint-plugin-prettier/LICENSE.md",
+      "name": "eslint-plugin-prettier",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (prettier/eslint-plugin-prettier)",
+      "originUrl": "https://raw.githubusercontent.com/prettier/eslint-plugin-prettier/main/LICENSE.md",
+      "sha256": "20e80c18f6f0a93b7aa35170293eca4f2adc1e357aa20b534c8768081e836f89",
+      "bytes": 1104
+    },
+    {
+      "relativePath": "ported/eslint-plugin-promise/LICENSE.md",
+      "name": "eslint-plugin-promise",
+      "category": "ported",
+      "license": "ISC",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (eslint-community/eslint-plugin-promise)",
+      "originUrl": "https://raw.githubusercontent.com/eslint-community/eslint-plugin-promise/main/LICENSE.md",
+      "sha256": "eb00384c4591335647e1b3eb22ca37a8935bd0f0783615dd8af5e219e7907f96",
+      "bytes": 734
+    },
+    {
+      "relativePath": "ported/eslint-plugin-react-perf/LICENSE",
+      "name": "eslint-plugin-react-perf",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (cvazac/eslint-plugin-react-perf)",
+      "originUrl": "https://raw.githubusercontent.com/cvazac/eslint-plugin-react-perf/master/LICENSE",
+      "sha256": "04ca9a8988de921a74aab5d04fd437d74ee204b67a781f3193c8d86550bb236c",
+      "bytes": 1081
+    },
+    {
+      "relativePath": "ported/eslint-plugin-react/LICENSE",
+      "name": "eslint-plugin-react",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (jsx-eslint/eslint-plugin-react)",
+      "originUrl": "https://raw.githubusercontent.com/jsx-eslint/eslint-plugin-react/master/LICENSE",
+      "sha256": "d500a9547fec26f52544f5f2fe52dec4b0c9bdf78177c79f202c98bd13d7c37c",
+      "bytes": 1085
+    },
+    {
+      "relativePath": "ported/eslint-plugin-unicorn/license",
+      "name": "eslint-plugin-unicorn",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (sindresorhus/eslint-plugin-unicorn)",
+      "originUrl": "https://raw.githubusercontent.com/sindresorhus/eslint-plugin-unicorn/main/license",
+      "sha256": "5c932d88256b4ab958f64a856fa48e8bd1f55bc1d96b8149c65689e0c61789d3",
+      "bytes": 1117
+    },
+    {
+      "relativePath": "ported/eslint-rewrite/LICENSE",
+      "name": "eslint-rewrite",
+      "category": "ported",
+      "license": "Apache-2.0",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (eslint/rewrite)",
+      "originUrl": "https://raw.githubusercontent.com/eslint/rewrite/main/LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357
+    },
+    {
+      "relativePath": "ported/eslint-utils/LICENSE",
+      "name": "eslint-utils",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (eslint-community/eslint-utils)",
+      "originUrl": "https://raw.githubusercontent.com/eslint-community/eslint-utils/main/LICENSE",
+      "sha256": "fcf6eabf68ca96988a6b506b4fdc6cc32535d80eb2e11c79724af5ac6f50262b",
+      "bytes": 1071
+    },
+    {
+      "relativePath": "ported/eslint/LICENSE",
+      "name": "eslint",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (eslint/eslint)",
+      "originUrl": "https://raw.githubusercontent.com/eslint/eslint/main/LICENSE",
+      "sha256": "3b6be04f862a077a4b97929dbf247299360824d9365f8603c263769303ace18c",
+      "bytes": 1094
+    },
+    {
+      "relativePath": "ported/eslintrc/LICENSE",
+      "name": "eslintrc",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (eslint/eslintrc)",
+      "originUrl": "https://raw.githubusercontent.com/eslint/eslintrc/main/LICENSE",
+      "sha256": "3b6be04f862a077a4b97929dbf247299360824d9365f8603c263769303ace18c",
+      "bytes": 1094
+    },
+    {
+      "relativePath": "ported/espree/LICENSE",
+      "name": "espree",
+      "category": "ported",
+      "license": "BSD-2-Clause",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (eslint/js)",
+      "originUrl": "https://raw.githubusercontent.com/eslint/js/main/packages/espree/LICENSE",
+      "sha256": "26c95937762a3dc17a3934a0a2773c70259ba4bf28dab713c225e4af8eb9d349",
+      "bytes": 1322
+    },
+    {
+      "relativePath": "ported/esquery/license.txt",
+      "name": "esquery",
+      "category": "ported",
+      "license": "BSD-3-Clause",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (estools/esquery)",
+      "originUrl": "https://raw.githubusercontent.com/estools/esquery/master/license.txt",
+      "sha256": "ac68116ae73740de4190892f334992e449a124600924ec761e64319d3aac9e6e",
+      "bytes": 1488
+    },
+    {
+      "relativePath": "ported/fast-diff/LICENSE",
+      "name": "fast-diff",
+      "category": "ported",
+      "license": "Apache-2.0",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (jhchen/fast-diff)",
+      "originUrl": "https://raw.githubusercontent.com/jhchen/fast-diff/master/LICENSE",
+      "sha256": "20430d7ea026abdb78e873e59a0817dd7d2921d94acefeafdc3e4e0150a4595d",
+      "bytes": 11345
+    },
+    {
+      "relativePath": "ported/get-east-asian-width/license",
+      "name": "get-east-asian-width",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (sindresorhus/get-east-asian-width)",
+      "originUrl": "https://raw.githubusercontent.com/sindresorhus/get-east-asian-width/main/license",
+      "sha256": "5c932d88256b4ab958f64a856fa48e8bd1f55bc1d96b8149c65689e0c61789d3",
+      "bytes": 1117
+    },
+    {
+      "relativePath": "ported/git-hooks-list/license",
+      "name": "git-hooks-list",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (fisker/git-hooks-list)",
+      "originUrl": "https://raw.githubusercontent.com/fisker/git-hooks-list/main/license",
+      "sha256": "a4062b09c0c9f2c837997f22ebd4840bffe712ab262f5dfa231226131f41ef3f",
+      "bytes": 1117
+    },
+    {
+      "relativePath": "ported/glimmer-vm/LICENSE",
+      "name": "glimmer-vm",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (glimmerjs/glimmer-vm)",
+      "originUrl": "https://raw.githubusercontent.com/glimmerjs/glimmer-vm/master/LICENSE",
+      "sha256": "442701046d7dec92b0a3760d4ccb045acb750c99c6c43092b050a487e1f69dbf",
+      "bytes": 1055
+    },
+    {
+      "relativePath": "ported/glob-parent/LICENSE",
+      "name": "glob-parent",
+      "category": "ported",
+      "license": "ISC",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (gulpjs/glob-parent)",
+      "originUrl": "https://raw.githubusercontent.com/gulpjs/glob-parent/main/LICENSE",
+      "sha256": "75fefbea6a5181cbca51c226e14d7244e688d5752526b0fdb94d84b6adbff3b1",
+      "bytes": 843
+    },
+    {
+      "relativePath": "ported/globals/license",
+      "name": "globals",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (sindresorhus/globals)",
+      "originUrl": "https://raw.githubusercontent.com/sindresorhus/globals/main/license",
+      "sha256": "5c932d88256b4ab958f64a856fa48e8bd1f55bc1d96b8149c65689e0c61789d3",
+      "bytes": 1117
+    },
+    {
+      "relativePath": "ported/graphql-js/LICENSE",
+      "name": "graphql-js",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (graphql/graphql-js)",
+      "originUrl": "https://raw.githubusercontent.com/graphql/graphql-js/17.x.x/LICENSE",
+      "sha256": "35a11da7e877009ddc57405844209908cfc567adda0ec1daf410368c9f5b0d01",
+      "bytes": 1072
+    },
+    {
+      "relativePath": "ported/handlebars-parser/LICENSE",
+      "name": "handlebars-parser",
+      "category": "ported",
+      "license": "MIT / ISC",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (handlebars-lang/handlebars.js)",
+      "originUrl": "https://raw.githubusercontent.com/handlebars-lang/handlebars.js/master/LICENSE",
+      "sha256": "e1955f622a2386195a4b67a1f30b9e88fde5cfb3fa95da46afdc4093bb9d0c5c",
+      "bytes": 1063
+    },
+    {
+      "relativePath": "ported/is-core-module/LICENSE",
+      "name": "is-core-module",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (inspect-js/is-core-module)",
+      "originUrl": "https://raw.githubusercontent.com/inspect-js/is-core-module/main/LICENSE",
+      "sha256": "5c496ce5ae47eb8e5ddcaa5e29c27c446a3855b19e3a66991b52f361bed22b28",
+      "bytes": 1078
+    },
+    {
+      "relativePath": "ported/is-extglob/LICENSE",
+      "name": "is-extglob",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (jonschlinkert/is-extglob)",
+      "originUrl": "https://raw.githubusercontent.com/jonschlinkert/is-extglob/master/LICENSE",
+      "sha256": "73b5283588baa142c5baaef5f56d3e8fdea7a30b214e8c5737e87640f882453a",
+      "bytes": 1087
+    },
+    {
+      "relativePath": "ported/is-glob/LICENSE",
+      "name": "is-glob",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (micromatch/is-glob)",
+      "originUrl": "https://raw.githubusercontent.com/micromatch/is-glob/master/LICENSE",
+      "sha256": "4cd903859549d4b20b571041f96dfae1136ed079c476126268f9d7cc1b611150",
+      "bytes": 1088
+    },
+    {
+      "relativePath": "ported/jest/LICENSE",
+      "name": "jest",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (jestjs/jest)",
+      "originUrl": "https://raw.githubusercontent.com/jestjs/jest/main/LICENSE",
+      "sha256": "9d5211db733ccdd26f9170bec24cdca84093f60415da6b769ee9cdf23d04e19f",
+      "bytes": 1132
+    },
+    {
+      "relativePath": "ported/jsx-ast-utils/LICENSE.md",
+      "name": "jsx-ast-utils",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (jsx-eslint/jsx-ast-utils)",
+      "originUrl": "https://raw.githubusercontent.com/jsx-eslint/jsx-ast-utils/main/LICENSE.md",
+      "sha256": "82b19019e25e266a310ef46800b3af726136a3cee79af8812dc83ca0b045afae",
+      "bytes": 1077
+    },
+    {
+      "relativePath": "ported/levn/LICENSE",
+      "name": "levn",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (gkz/levn)",
+      "originUrl": "https://raw.githubusercontent.com/gkz/levn/master/LICENSE",
+      "sha256": "b9eb082c39fe245e38793699074c394c43a722c51fce031c3c165cb92a31035c",
+      "bytes": 1054
+    },
+    {
+      "relativePath": "ported/micromark/license",
+      "name": "micromark",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (micromark/micromark)",
+      "originUrl": "https://raw.githubusercontent.com/micromark/micromark/main/license",
+      "sha256": "dd1081884a92952802f4803110a6bb543acea9a814c786d58605b4c1219b5ebb",
+      "bytes": 1094
+    },
+    {
+      "relativePath": "ported/narrow-emojis/license",
+      "name": "narrow-emojis",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (fisker/narrow-emojis)",
+      "originUrl": "https://raw.githubusercontent.com/fisker/narrow-emojis/main/license",
+      "sha256": "a4062b09c0c9f2c837997f22ebd4840bffe712ab262f5dfa231226131f41ef3f",
+      "bytes": 1117
+    },
+    {
+      "relativePath": "ported/natural-compare-lite/LICENSE",
+      "name": "natural-compare-lite",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (litejs/natural-compare-lite)",
+      "originUrl": "https://raw.githubusercontent.com/litejs/natural-compare-lite/master/LICENSE",
+      "sha256": "353fe762ba595bf1ffe786acf0f5984bb164205901d74f258af195fc8228c67d",
+      "bytes": 1087
+    },
+    {
+      "relativePath": "ported/node-ignore/LICENSE-MIT",
+      "name": "node-ignore",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (kaelzhang/node-ignore)",
+      "originUrl": "https://raw.githubusercontent.com/kaelzhang/node-ignore/master/LICENSE-MIT",
+      "sha256": "9c94db23dc4b1e9aaee5d195668b916afc71efed54af226b66cf0ccc4389c1c0",
+      "bytes": 1095
+    },
+    {
+      "relativePath": "ported/optionator/LICENSE",
+      "name": "optionator",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (gkz/optionator)",
+      "originUrl": "https://raw.githubusercontent.com/gkz/optionator/master/LICENSE",
+      "sha256": "b9eb082c39fe245e38793699074c394c43a722c51fce031c3c165cb92a31035c",
+      "bytes": 1054
+    },
+    {
+      "relativePath": "ported/oxc/LICENSE",
+      "name": "oxc",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (oxc-project/oxc)",
+      "originUrl": "https://raw.githubusercontent.com/oxc-project/oxc/main/LICENSE",
+      "sha256": "95ced5ecf1133fbf41d409b5555c86c344f83f3b019926057ddbc07cfdcc27b3",
+      "bytes": 1119
+    },
+    {
+      "relativePath": "ported/postcss-less/LICENSE",
+      "name": "postcss-less",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (prettier/postcss-less)",
+      "originUrl": "https://raw.githubusercontent.com/prettier/postcss-less/master/LICENSE",
+      "sha256": "ce4ef9c48a45bbfc480671256a45a191ece0622d78061599b09b0ee60cf517d6",
+      "bytes": 1271
+    },
+    {
+      "relativePath": "ported/postcss-media-query-parser/LICENSE.md",
+      "name": "postcss-media-query-parser",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (dryoma/postcss-media-query-parser)",
+      "originUrl": "https://raw.githubusercontent.com/dryoma/postcss-media-query-parser/master/README.md",
+      "sha256": "600f0a2c73c8df9579bf650d13b973e0dc0243058515005f9b615323f44e1fc7",
+      "bytes": 6786
+    },
+    {
+      "relativePath": "ported/postcss-scss/LICENSE",
+      "name": "postcss-scss",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (postcss/postcss-scss)",
+      "originUrl": "https://raw.githubusercontent.com/postcss/postcss-scss/master/LICENSE",
+      "sha256": "c4630ac8b89cb317ac5bdd60ac5e4e185eab9bd5151a0c7b3afa41aa83d7ec9b",
+      "bytes": 1095
+    },
+    {
+      "relativePath": "ported/postcss-selector-parser/LICENSE-MIT",
+      "name": "postcss-selector-parser",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (postcss/postcss-selector-parser)",
+      "originUrl": "https://raw.githubusercontent.com/postcss/postcss-selector-parser/master/LICENSE-MIT",
+      "sha256": "2998094b38f7ace25f141fb36f334d8338f65a1812978d618b1161f4d77ae10e",
+      "bytes": 1092
+    },
+    {
+      "relativePath": "ported/postcss-values-parser/LICENSE",
+      "name": "postcss-values-parser",
+      "category": "ported",
+      "license": "MPL-2.0",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (shellscape/postcss-values-parser)",
+      "originUrl": "https://raw.githubusercontent.com/shellscape/postcss-values-parser/master/LICENSE",
+      "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
+      "bytes": 16725
+    },
+    {
+      "relativePath": "ported/postcss/LICENSE",
+      "name": "postcss",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (postcss/postcss)",
+      "originUrl": "https://raw.githubusercontent.com/postcss/postcss/main/LICENSE",
+      "sha256": "5be1f3465bba68a626777f984878814aaf35e7ef8e9fd314d469bcf887050fb8",
+      "bytes": 1095
+    },
+    {
+      "relativePath": "ported/prettier-linter-helpers/LICENSE.md",
+      "name": "prettier-linter-helpers",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (prettier/prettier-linter-helpers)",
+      "originUrl": "https://raw.githubusercontent.com/prettier/prettier-linter-helpers/main/LICENSE.md",
+      "sha256": "20e80c18f6f0a93b7aa35170293eca4f2adc1e357aa20b534c8768081e836f89",
+      "bytes": 1104
+    },
+    {
+      "relativePath": "ported/prettier-plugin-sort-imports-ianvs/LICENSE",
+      "name": "prettier-plugin-sort-imports-ianvs",
+      "category": "ported",
+      "license": "Apache-2.0",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (ianvs/prettier-plugin-sort-imports)",
+      "originUrl": "https://raw.githubusercontent.com/ianvs/prettier-plugin-sort-imports/main/LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357
+    },
+    {
+      "relativePath": "ported/prettier-plugin-sort-imports-trivago/LICENSE",
+      "name": "prettier-plugin-sort-imports-trivago",
+      "category": "ported",
+      "license": "Apache-2.0",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (trivago/prettier-plugin-sort-imports)",
+      "originUrl": "https://raw.githubusercontent.com/trivago/prettier-plugin-sort-imports/main/LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357
+    },
+    {
+      "relativePath": "ported/prettier-plugin-svelte/LICENSE",
+      "name": "prettier-plugin-svelte",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (sveltejs/prettier-plugin-svelte)",
+      "originUrl": "https://raw.githubusercontent.com/sveltejs/prettier-plugin-svelte/main/LICENSE",
+      "sha256": "79c75dc2080938a9c8714cdf1cb43fd898f6948bec91134b7a904eefa8159513",
+      "bytes": 1143
+    },
+    {
+      "relativePath": "ported/prettier-plugin-tailwindcss/LICENSE",
+      "name": "prettier-plugin-tailwindcss",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (tailwindlabs/prettier-plugin-tailwindcss)",
+      "originUrl": "https://raw.githubusercontent.com/tailwindlabs/prettier-plugin-tailwindcss/main/LICENSE",
+      "sha256": "2c93b6bf68a7e6809d6b5025c136818c3eb84adcf5f52e6c20711629ad34a796",
+      "bytes": 1070
+    },
+    {
+      "relativePath": "ported/prettier/LICENSE",
+      "name": "prettier",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (prettier/prettier)",
+      "originUrl": "https://raw.githubusercontent.com/prettier/prettier/main/LICENSE",
+      "sha256": "b0f2417199889f1c0d28ec4e0244eacf1a15de5819d61f641dd7d8f45153ac9c",
+      "bytes": 1065
+    },
+    {
+      "relativePath": "ported/react/LICENSE",
+      "name": "react",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (facebook/react)",
+      "originUrl": "https://raw.githubusercontent.com/facebook/react/main/LICENSE",
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+      "bytes": 1088
+    },
+    {
+      "relativePath": "ported/regexpp/LICENSE",
+      "name": "regexpp",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (eslint-community/regexpp)",
+      "originUrl": "https://raw.githubusercontent.com/eslint-community/regexpp/main/LICENSE",
+      "sha256": "fcf6eabf68ca96988a6b506b4fdc6cc32535d80eb2e11c79724af5ac6f50262b",
+      "bytes": 1071
+    },
+    {
+      "relativePath": "ported/simple-html-tokenizer/LICENSE",
+      "name": "simple-html-tokenizer",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (tildeio/simple-html-tokenizer)",
+      "originUrl": "https://raw.githubusercontent.com/tildeio/simple-html-tokenizer/master/LICENSE",
+      "sha256": "c41881de2a9f2200936648343500524be154eb79f649582f9582dd251b051b11",
+      "bytes": 1072
+    },
+    {
+      "relativePath": "ported/sort-package-json/LICENSE",
+      "name": "sort-package-json",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (keithamus/sort-package-json)",
+      "originUrl": "https://raw.githubusercontent.com/keithamus/sort-package-json/master/LICENSE",
+      "sha256": "cf9a066fae02f2ed882a4eb42e232cf1c756a5dbb7da0c8e79b75ffdac863b46",
+      "bytes": 1069
+    },
+    {
+      "relativePath": "ported/svelte/LICENSE.md",
+      "name": "svelte",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (sveltejs/svelte)",
+      "originUrl": "https://raw.githubusercontent.com/sveltejs/svelte/main/LICENSE.md",
+      "sha256": "06257f4847b13a49a039efb17b944c141e71b12fd8d231b362d86919067d77a3",
+      "bytes": 1126
+    },
+    {
+      "relativePath": "ported/ts-api-utils/LICENSE.md",
+      "name": "ts-api-utils",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (JoshuaKGoldberg/ts-api-utils)",
+      "originUrl": "https://raw.githubusercontent.com/JoshuaKGoldberg/ts-api-utils/main/LICENSE.md",
+      "sha256": "76c9d5f5ea942054715c026f33f8717c9e24603196a3737b8899afa216bcbdab",
+      "bytes": 1038
+    },
+    {
+      "relativePath": "ported/tsgolint/LICENSE",
+      "name": "tsgolint",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (oxc-project/tsgolint)",
+      "originUrl": "https://raw.githubusercontent.com/oxc-project/tsgolint/main/LICENSE",
+      "sha256": "c211cc5336d2d47f21322aca35c8149699de621edc447294b617048d05a745ce",
+      "bytes": 1163
+    },
+    {
+      "relativePath": "ported/typescript-eslint/LICENSE",
+      "name": "typescript-eslint",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (typescript-eslint/typescript-eslint)",
+      "originUrl": "https://raw.githubusercontent.com/typescript-eslint/typescript-eslint/main/LICENSE",
+      "sha256": "2eb5c7a0bba9deb77a98c81bf6b9d3fb1c67118eebf968b6b1a787b3f8928ee0",
+      "bytes": 1097
+    },
+    {
+      "relativePath": "ported/typescript-go/LICENSE",
+      "name": "typescript-go",
+      "category": "ported",
+      "license": "Apache-2.0",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (microsoft/typescript-go)",
+      "originUrl": "https://raw.githubusercontent.com/microsoft/typescript-go/main/LICENSE",
+      "sha256": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47",
+      "bytes": 9197
+    },
+    {
+      "relativePath": "ported/TypeScript/LICENSE.txt",
+      "name": "TypeScript",
+      "category": "ported",
+      "license": "Apache-2.0",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (microsoft/TypeScript)",
+      "originUrl": "https://raw.githubusercontent.com/microsoft/TypeScript/main/LICENSE.txt",
+      "sha256": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47",
+      "bytes": 9197
+    },
+    {
+      "relativePath": "ported/v8/LICENSE",
+      "name": "v8",
+      "category": "ported",
+      "license": "BSD-3-Clause",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (v8/v8)",
+      "originUrl": "https://raw.githubusercontent.com/v8/v8/main/LICENSE",
+      "sha256": "6ab33af8774a0f396ee3aeeb761e3229057682d6f9fa7f572e390c2cb3a6e509",
+      "bytes": 3093
+    },
+    {
+      "relativePath": "ported/vitest-eslint-plugin/LICENSE",
+      "name": "vitest-eslint-plugin",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (vitest-dev/eslint-plugin-vitest)",
+      "originUrl": "https://raw.githubusercontent.com/vitest-dev/eslint-plugin-vitest/main/LICENSE",
+      "sha256": "9a5663b6ae3e7554d0652faf7de109aca19d13defac22b2a230d5a4f2980b4b8",
+      "bytes": 1089
+    },
+    {
+      "relativePath": "ported/yaml-unist-parser/license",
+      "name": "yaml-unist-parser",
+      "category": "ported",
+      "license": "MIT",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (prettier/yaml-unist-parser)",
+      "originUrl": "https://raw.githubusercontent.com/prettier/yaml-unist-parser/master/license",
+      "sha256": "bc3c60953044b4ec92a85e49516b03da0ac7f0dde879f5359de700aeab4de0b7",
+      "bytes": 1106
+    },
+    {
+      "relativePath": "ported/yaml/LICENSE",
+      "name": "yaml",
+      "category": "ported",
+      "license": "ISC",
+      "versionBasis": "Bun v1.4.4 LICENSE.md ported inventory (eemeli/yaml)",
+      "originUrl": "https://raw.githubusercontent.com/eemeli/yaml/main/LICENSE",
+      "sha256": "5bba27375d93e9119f76c1015f7672cf9ad5f70952296e0842fb2243d6376869",
+      "bytes": 738
+    },
+    {
+      "relativePath": "webkit/JavaScriptCore-COPYING.LIB",
+      "name": "JavaScriptCore-COPYING.LIB",
+      "category": "webkit",
+      "license": "LGPL-2.1 / LGPL-2.0",
+      "versionBasis": "commit d6375c72affe0f70222cdcb45012b10f0bf3a9d5",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/WebKit/d6375c72affe0f70222cdcb45012b10f0bf3a9d5/Source/JavaScriptCore/COPYING.LIB",
+      "sha256": "5094ecb9c9dcd0eadc34f3c11511d9b5535063032bc150164ecd1a5d5a445547",
+      "bytes": 25584
+    },
+    {
+      "relativePath": "webkit/RELINK_INSTRUCTIONS.md",
+      "name": "RELINK_INSTRUCTIONS.md",
+      "category": "webkit",
+      "license": "Documentation",
+      "versionBasis": "Bun v1.4.4 tagged build metadata",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/bun/bun-v1.4.4/scripts/build/deps/webkit.ts",
+      "sha256": "a537e2440b9cdf8e9ab93f9d32420ec6491a4f0a3b818919f92a60e76aa35907",
+      "bytes": 2043
+    },
+    {
+      "relativePath": "webkit/WebCore-LICENSE-APPLE",
+      "name": "WebCore-LICENSE-APPLE",
+      "category": "webkit",
+      "license": "BSD-2-Clause",
+      "versionBasis": "commit d6375c72affe0f70222cdcb45012b10f0bf3a9d5",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/WebKit/d6375c72affe0f70222cdcb45012b10f0bf3a9d5/Source/WebCore/LICENSE-APPLE",
+      "sha256": "0b5d3a7cc325942567373b0ecd757d07c132e0ebd7c97bfc63f7e1a76094edb4",
+      "bytes": 1313
+    },
+    {
+      "relativePath": "webkit/WebCore-LICENSE-LGPL-2",
+      "name": "WebCore-LICENSE-LGPL-2",
+      "category": "webkit",
+      "license": "LGPL-2.0",
+      "versionBasis": "commit d6375c72affe0f70222cdcb45012b10f0bf3a9d5",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/WebKit/d6375c72affe0f70222cdcb45012b10f0bf3a9d5/Source/WebCore/LICENSE-LGPL-2",
+      "sha256": "7555fa34bc131a75ca56d65c40cc1ea8f9515d23e353d4c15d58573a042f7805",
+      "bytes": 25378
+    },
+    {
+      "relativePath": "webkit/WebCore-LICENSE-LGPL-2.1",
+      "name": "WebCore-LICENSE-LGPL-2.1",
+      "category": "webkit",
+      "license": "LGPL-2.1",
+      "versionBasis": "commit d6375c72affe0f70222cdcb45012b10f0bf3a9d5",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/WebKit/d6375c72affe0f70222cdcb45012b10f0bf3a9d5/Source/WebCore/LICENSE-LGPL-2.1",
+      "sha256": "f2b3bd09663381deb99721109d22b47af1213bb43007a8b56a06c6375c8050ce",
+      "bytes": 26536
+    },
+    {
+      "relativePath": "webkit/WTF-LICENSE-dragonbox.txt",
+      "name": "WTF-LICENSE-dragonbox.txt",
+      "category": "webkit",
+      "license": "Apache-2.0 with LLVM Exception OR Boost-1.0",
+      "versionBasis": "commit d6375c72affe0f70222cdcb45012b10f0bf3a9d5",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/WebKit/d6375c72affe0f70222cdcb45012b10f0bf3a9d5/Source/WTF/LICENSE-dragonbox.txt",
+      "sha256": "9bb1036ef8dcb42c59e2a23c9e465f43e75003e06898faf0edd18de662f3ecb8",
+      "bytes": 13858
+    },
+    {
+      "relativePath": "webkit/WTF-LICENSE-libc++.txt",
+      "name": "WTF-LICENSE-libc++.txt",
+      "category": "webkit",
+      "license": "Apache-2.0 with LLVM Exception",
+      "versionBasis": "commit d6375c72affe0f70222cdcb45012b10f0bf3a9d5",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/WebKit/d6375c72affe0f70222cdcb45012b10f0bf3a9d5/Source/WTF/LICENSE-libc++.txt",
+      "sha256": "c1938c0e9e90639d1e8f5a7f6bebaab83a3642e0ee44295a4c69934686d0bda8",
+      "bytes": 3493
+    },
+    {
+      "relativePath": "webkit/WTF-LICENSE-LLVM.txt",
+      "name": "WTF-LICENSE-LLVM.txt",
+      "category": "webkit",
+      "license": "Apache-2.0 with LLVM Exception",
+      "versionBasis": "commit d6375c72affe0f70222cdcb45012b10f0bf3a9d5",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/WebKit/d6375c72affe0f70222cdcb45012b10f0bf3a9d5/Source/WTF/LICENSE-LLVM.txt",
+      "sha256": "f72b120d1385408e9e380acc020756eb6ba1b461d66c328ea67327ba08d7dcfd",
+      "bytes": 12263
+    },
+    {
+      "relativePath": "webkit/WTF-LICENSE-simde.txt",
+      "name": "WTF-LICENSE-simde.txt",
+      "category": "webkit",
+      "license": "MIT",
+      "versionBasis": "commit d6375c72affe0f70222cdcb45012b10f0bf3a9d5",
+      "originUrl": "https://raw.githubusercontent.com/oven-sh/WebKit/d6375c72affe0f70222cdcb45012b10f0bf3a9d5/Source/WTF/LICENSE-simde.txt",
+      "sha256": "75ce0a8c5a7bff42fbd6f8f3b469b518132132c4f4948fb8d02b1ccb5d0df9d8",
+      "bytes": 1077
+    }
+  ]
+}

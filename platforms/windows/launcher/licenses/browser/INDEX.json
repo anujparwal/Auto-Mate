@@ -1,0 +1,15 @@
+[
+  {
+    "file": "Chrome-156.0.8078.4-credits.txt",
+    "source": "chrome://credits/",
+    "product": "Chrome for Testing 156.0.8078.4",
+    "bytes": 5155841,
+    "sha256": "ed4bb558adf35d05e22134d20bd0a6bb4b67a16114f83a2c074619d1797d084e"
+  },
+  {
+    "file": "Chrome-additional-terms.txt",
+    "source": "chrome://terms/",
+    "product": "Chrome for Testing 156.0.8078.4",
+    "note": "Additional terms reference https://policies.google.com/terms; no blanket redistribution grant is asserted."
+  }
+]

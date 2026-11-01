@@ -6,43 +6,52 @@ Auto-Mate opens an owner-only website in a local Chromium window on **your Windo
 
 **Development preview: use fictitious data and public test forms only.** It is not a production password manager, a general autonomous agent, or a guarantee of perfect security. The app never clicks Login, Pay, or Submit in real-site autofill. Filling itself gives those values to the receiving website and its scripts; Stop cannot undo that disclosure.
 
-The public download site is separate from the working owner website. Vault storage, Windows Hello, approval, and the protected browser run on each user's PC. There is no extension, public vault server, or cross-user credential service.
+The public [homepage and simulated product film](https://github.com/anujparwal/Auto-Mate-homepage) are separate from the working application. The first Windows preview release is **private**. Its application archive contains no marketing homepage or demo film. Vault storage, Windows Hello, approval, and the protected browser run on each user's PC. There is no extension, public vault server, or cross-user credential service.
 
-## 2. Install the required software
+## 2. Install the Windows application
 
-Supported runtime: **Windows 11 x64, build 22000+, 64-bit Windows PowerShell 5.1+, and Bun 1.4.4+**. Windows includes the native .NET/DPAPI components; no separate .NET SDK, Docker, GPU software, Android SDK, or local 9B model download is needed to run this Windows website.
+Supported platform: **Windows 11 x64, build 22000+**, with the included Windows PowerShell 5.1 and .NET/DPAPI components. The portable application bundles Bun, its runtime dependencies, and Playwright Chromium; an application user does **not** need to install Bun, Node, npm packages, Docker, GPU software, or a local model.
 
-### From the future public download site
+### From the private preview release
 
-1. Download `Auto-Mate-windows.zip` and `SHA256SUMS.txt` from the same reviewed release.
-2. In PowerShell, run `Get-FileHash .\Auto-Mate-windows.zip -Algorithm SHA256` and compare the complete hash with `SHA256SUMS.txt`. A matching hash checks integrity, not publisher identity; this preview is an unsigned source package.
-3. Extract the ZIP to a folder you control. The package is Windows-specific source, not a standalone executable.
-4. Open PowerShell in the extracted folder and review `tools/setup-windows.ps1`. If Windows marked this reviewed script as downloaded, remove the mark for this file only with `Unblock-File .\tools\setup-windows.ps1`. Do not change machine-wide execution policies or override an organization's policy.
-5. Run:
+1. Sign in with repository access and open [v0.1.0-preview.1](https://github.com/anujparwal/Auto-Mate/releases/tag/v0.1.0-preview.1). The public homepage does not offer a public app download.
+2. Download `Auto-Mate-0.1.0-preview.1-windows-x64.zip` and `SHA256SUMS.txt` from that release.
+3. Run `Get-FileHash .\Auto-Mate-0.1.0-preview.1-windows-x64.zip -Algorithm SHA256` and compare the complete hash with the matching checksum entry. Integrity is not publisher identity: this is an **unsigned private preview**, not a signed production installer.
+4. Extract the complete ZIP into a **short path** in a folder you control, for example `%LOCALAPPDATA%\AM-preview`. Windows PowerShell's ZIP extraction can fail when a resulting path exceeds its legacy path limit. Keep `Auto-Mate.exe` and its bundled files together; do not run it from inside the archive.
+5. In the extracted `Auto-Mate-0.1.0-preview.1-windows-x64` folder, run the bundled check:
 
    ```powershell
-   powershell.exe -NoProfile -File .\tools\setup-windows.ps1
+   $check = Start-Process -FilePath .\Auto-Mate.exe -ArgumentList '--check' -Wait -PassThru
+   $check.ExitCode
    ```
 
-The script preserves existing installations. If Bun is missing, it downloads the pinned official Windows release and verifies its published SHA-256 digest before installation. It then installs locked project dependencies (including Sharp and Playwright) and Chromium. Reopen PowerShell if Bun was newly added to your user PATH. An existing older Bun is not silently overwritten; update it deliberately and rerun setup.
+   It must exit `0`; a synthetic runtime check is not proof of successful Windows Hello. No normal vault authentication is bypassed.
+6. Double-click `Auto-Mate.exe` to open the actual owner application. Windows may warn about an unsigned download. Establish the trusted source and checksum; do not disable SmartScreen, antivirus, or an organization's policy.
 
-### From an existing repository checkout
+This is a portable application, not a machine-wide installer. The homepage, film, developer conversation memory, and source-site deployment tooling are not part of its release archive. A clean Windows machine and downloaded-file security behavior still require separate acceptance checks.
 
-Open PowerShell in the repository root, then use the same setup command. Contributors can add `-DeveloperTools` to install missing Git/GitHub CLI through winget. Those tools are not required for an end user running an extracted source package. To inspect already-installed runtime prerequisites without downloading:
+### For contributors using a repository checkout
+
+Source development additionally requires **Bun 1.4.4+**. From the repository root:
 
 ```powershell
+powershell.exe -NoProfile -File .\tools\setup-windows.ps1
 powershell.exe -NoProfile -File .\tools\setup-windows.ps1 -CheckOnly
 ```
 
-A prerequisite check is not a successful Windows Hello test or a complete runtime test.
+Setup preserves existing installations, digest-verifies the pinned official Bun download when missing, installs locked dependencies and Chromium, and supports `-DeveloperTools` for missing Git/GitHub CLI. Those setup tools are not prerequisites for the bundled end-user application. No model hosting is installed.
 
-## 3. Open the owner website
+## 3. Open the owner application
+
+Portable release: double-click `Auto-Mate.exe`. Keep any application console window open while using it.
+
+Repository checkout:
 
 ```powershell
 bun start
 ```
 
-Keep that terminal open. Auto-Mate opens its browser window automatically. Do not type the internal `*.auto-mate.invalid` URL into a normal browser: application assets and commands are bound to the browser instance launched by Auto-Mate, not a public HTTP listener.
+Keep that development terminal open. Auto-Mate opens its own Chromium window automatically. Do not type the internal `*.auto-mate.invalid` URL into a normal browser: application assets and commands are bound to the browser instance launched by Auto-Mate, not a public HTTP listener.
 
 The **Vault** column is for owner entry/listing. The website column is for inspection and field disclosure. The live preview is an image for observation; type into the owner's controls, not the preview image. The separate protected browser shows the actual receiving page.
 
@@ -129,26 +138,22 @@ The native smoke must report `Unicode secrets survive detached write and UTF-8-c
 
 For a manual acceptance matrix, use [README.md](README.md#website-acceptance-checklist). Also check the owner UI at about 390 px width: no horizontal page overflow, no focus/draft loss from preview refresh, and no stale frame after Stop.
 
-## 11. Prepare or deploy the public download site later
+## 11. Build and publish the application separately from the homepage
 
-The agreed architecture is a static public site plus a local Windows app for each user—not a hosted vault or multi-user browser service.
+The application repository and its first release remain **private**. Build the application-only portable archive on Windows:
 
 ```powershell
-bun run build:site
+bun run build:app
+bun run check:app
 ```
 
-This generates `dist/site/` containing the static HTML/CSS, usage/model guides, Windows source ZIP, and checksum. The build packages allowlisted source roots only; it excludes `.git`, `.local`, default vault data, environment files, dependency caches, and maintainer conversation memory. These exclusions are not a substitute for reviewing source for accidentally committed secrets. `dist/` is ignored by Git.
+`dist/app/` contains `Auto-Mate-0.1.0-preview.1-windows-x64.zip`, `SHA256SUMS.txt`, and release metadata. Publish the application ZIP and checksum as a **prerelease** of the reviewed, tested source commit. Do not upload the former source-site ZIP, homepage source, demo film, vault data, `.env` files, keys, or maintainer conversation memory. The archive includes required runtime components and third-party license notices.
 
-To publish later on GitHub Pages:
+`check:app` validates the checksum and application-only archive boundary, extracts into a temporary path containing spaces and Unicode, and runs the actual bundled `Auto-Mate.exe --check` with global Bun/Node excluded from `PATH`. It exercises the packaged DPAPI/Chromium path, not just the source checkout. It does not prove successful Hello authentication, signing, or a clean-machine installation.
 
-1. Merge a reviewed PR into `main` after Windows verification passes.
-2. Review what the ZIP exposes and obtain any required redistribution/license approvals. Publishing the site intentionally distributes source, even if the Git repository itself remains private. The preview is unsigned and must retain its development warnings.
-3. In repository **Settings → Pages**, select **GitHub Actions** as the source. Repository visibility/plan must support Pages; a private repository may need an eligible paid plan. This work does not change repository visibility or purchase a plan.
-4. Configure the `github-pages` environment with required reviewer approval if desired.
-5. Under **Actions → Deploy public download site → Run workflow**, choose `main`. The workflow runs Windows tests/smoke, builds the package, and deploys only `dist/site`. It does not upload local vaults, API keys, or install a remote vault server.
-6. Check the resulting HTTPS page, ZIP download, checksum, and fresh Windows setup. No deployment has been performed merely by creating this workflow. You can instead host the contents of `dist/site` on another approved static host.
+The public homepage and non-interactive simulated film live only in [Auto-Mate-homepage](https://github.com/anujparwal/Auto-Mate-homepage). Its own build and Pages workflow publish static marketing assets; they never start a native broker or receive a user's vault. The previous app-side static site/source-package deployment has been removed to avoid publishing application source through the wrong path. Follow the homepage repository's instructions to edit, render, or deploy it.
 
-A public development download is not production security readiness. Positive Hello/session tests, repeatable browser-test reliability, independent security review, and a signed/versioned release and recovery strategy remain release gates before recommending private credentials.
+The first release is an unsigned, test-data-only private preview—not production approval. Successful Hello/session tests, clean-machine installation, repeatable browser reliability, independent security review, signing, and a recovery strategy remain gates before recommending private credentials or public application distribution.
 
 ## 12. Troubleshooting and data handling
 
@@ -159,4 +164,4 @@ A public development download is not production security readiness. Positive Hel
 - **Script blocked:** review the script and unblock only the reviewed downloaded file if organizational policy permits; do not disable global protections.
 - **Report a bug:** include button order, public target URL, record type, visible phase/error, whether the protected page closed, and whether an unapproved field changed. Never send values, private IDs, API keys, vault files, or unredacted screenshots.
 
-Normal encrypted data and audit files are outside the extracted application folder: the default vault is `%LOCALAPPDATA%\Auto-Mate\vault.json`, and broker audit journals are under `%LOCALAPPDATA%\AutoMate\audit\`. Deleting app source is not a vault-deletion or recovery procedure. DPAPI is tied to the Windows user/device context; same-user malware and a compromised OS are outside its guarantee. There is no supported cross-device recovery/export design yet. Do not entrust irreplaceable private credentials to this preview.
+Normal encrypted data and audit files are outside the extracted application folder: the default vault is `%LOCALAPPDATA%\Auto-Mate\vault.json`, and broker audit journals are under `%LOCALAPPDATA%\AutoMate\audit\`. Deleting the application folder is not a vault-deletion or recovery procedure. DPAPI is tied to the Windows user/device context; same-user malware and a compromised OS are outside its guarantee. There is no supported cross-device recovery/export design yet. Do not entrust irreplaceable private credentials to this preview.

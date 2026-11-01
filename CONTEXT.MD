@@ -1,15 +1,15 @@
 # Auto-Mate project context
 
-Consolidated project memory from all available Auto-Mate conversations through the current release-preparation session. This is a maintained context summary, not a verbatim transcript or a claim that every original goal is implemented. It deliberately excludes tokens, private credentials, raw vault data, unrelated command history, and machine-specific session files. It is not included in the public Windows download package.
+Consolidated project memory from all available Auto-Mate conversations through the current release-preparation session. This is a maintained context summary, not a verbatim transcript or a claim that every original goal is implemented. It deliberately excludes tokens, private credentials, raw vault data, unrelated command history, and machine-specific session files. It is excluded from the application release and public homepage.
 
 ## Current user decisions — read these first
 
 1. Continue with the **website**, not a browser extension. The earlier extension idea (including automatic file filling) was explicitly superseded. Do not resume extension development or promise arbitrary file autofill.
 2. Prioritize testing existing features and fixing demonstrated bugs over adding features. The user repeatedly requests correctness; never translate that into a guarantee of zero bugs or perfect security.
 3. The user initially mentioned Qwen3.5-9B hosted on Google Colab, then explicitly clarified: **they will provide an OpenAI-compatible API; do not set up the model**. This later instruction supersedes Colab/model-hosting preparations. Do not download weights, install model-serving software, create notebooks/tunnels, or provision GPUs. Configure and verify the supplied endpoint/model/key when available; no connection details have been supplied yet.
-4. Public deployment choice, explicitly selected by the user: **the vault and protected browser stay on each user's Windows PC**. A public static website distributes the source package and instructions. Installation is required; this is not a pure-browser vault or a hosted multi-tenant credential service.
+4. Deployment architecture: **the vault and protected browser stay on each user's Windows PC**; installation is required. The latest distribution decision is a **private application preview** and a separate **public static marketing homepage with a non-interactive simulated video**. Do not publish application source/downloads or expose the owner vault as a hosted multi-tenant service.
 5. Install/verify the software actually needed for supported running/testing. Do not download unrelated GPU/Docker/Android tooling for the Windows website. Never buy cloud compute or change repository visibility without separate authorization.
-6. Keep clear usage instructions in `use.md`, conversation decisions in `CONTEXT.MD`, and create a PR containing the work so far. The existing repository is private; publishing a download site later intentionally distributes the packaged source and requires owner review.
+6. Keep clear usage instructions in `use.md`, conversation decisions in `CONTEXT.MD`, and create a PR containing the work. Keep the existing application repository private. The separately authorized homepage repository is public; the first application release contains only the application/runtime/license/usage files, never the demo page or film.
 
 ## Original product vision (2026-10-30)
 
@@ -79,6 +79,22 @@ The initial wish list also included configurable categories, destination blackli
 - The final extracted-package native smoke exposed another real transport problem: a legacy .NET stdin writer emitted a UTF-8 BOM, while detached PowerShell decoded bytes as OEM code page 437. Corrected the smoke producer/decoders and reproduced cross-console Unicode secret corruption; an ordinary same-encoding roundtrip had hidden it. Native broker IPC now uses explicit process-local BOM-free UTF-8 readers/writers without changing console code pages. The cross-console regression failed before and passed after, along with all native refusal/privacy checks and actual DPAPI/Chromium smoke. These are synthetic-data checks, not proof of successful Windows Hello or actual provider inference.
 - Final repair review: [PR #5](https://github.com/anujparwal/Auto-Mate/pull/5). Integrated local verification passed all **171 tests**, typecheck, and both workflow actionlint checks. Rebuilt the ZIP, extracted it outside the checkout, installed frozen dependencies, passed setup/check-only, typecheck, the full native ACL/privacy/refusal/cross-console Unicode smoke, and actual DPAPI/Chromium execution. The ZIP bytes matched the published SHA-256. Hosted results are recorded in that PR's Verify checks; this local evidence does not establish successful Hello, a fresh-machine Bun bootstrap, actual supplied-API inference, or production/public deployment approval.
 
+## Application release and separate homepage
+
+- The next request is to bundle the actual Windows application, make its first release, and create a separate homepage repository with as many suitable 21st.dev components as practical and Framer Motion animation. The product demonstration is a non-interactive **video**, not a simulated form that visitors can operate.
+- The user explicitly selected **private preview release**: the app repository and application download remain private. The separate public homepage repository is [Auto-Mate-homepage](https://github.com/anujparwal/Auto-Mate-homepage), created for the marketing site and original simulated film. Its visitors are not promised a public installer.
+- Priority clarification: **the release contains the application only, not the demo page**. The portable ZIP excludes the homepage, film, marketing assets, developer prototype page, keys, vaults, and conversation memory. Its native launcher starts the normal owner app with bundled Bun/Chromium/dependencies; source development can retain its separate synthetic prototype.
+- Selected first version: `v0.1.0-preview.1`, unsigned Windows 11 x64 private prerelease. The application archive is `Auto-Mate-0.1.0-preview.1-windows-x64.zip`, accompanied by `SHA256SUMS.txt`; it is not a signed installer or production approval. The old in-app static site, source-ZIP builder, and Pages publisher have been removed as obsolete.
+- The original 36-second 1440×900 film uses fictitious `.test` destinations and persistent simulated-data labels. Its Windows Hello scene explicitly states that no OS verification is performed; subsequent filling is conditional illustration. It does not prove a live model, account access, biometric/PIN success, or workstation lifecycle behavior.
+- Component provenance is recorded in the homepage's `ATTRIBUTIONS.md`, including component-specific 21st catalog licenses, public upstream sources, actual copyright notices, and adaptation details. No 21st key was supplied; authenticated registry endpoints, paid assets, and quotas must not be bypassed. Public build output includes dependency license notices and self-hosted fonts.
+- Normal release behavior remains deterministic selected-field filling. Login and payment-card records are supported; CVV/OTP/TOTP challenges are refused. There is no Windows UI Automation executor, HWND-bound credential policy, hardware-backed DPAPI guarantee, hard-real-time teardown claim, or guaranteed JavaScript/website memory zeroization. Lock cannot undo data already disclosed to website scripts.
+- Release validation must exercise the extracted bundled runtime with global Bun excluded, the actual owner UI, native/browser smoke, and launcher child-tree shutdown. Homepage validation must exercise actual mobile/desktop rendering, playback/captions, keyboard navigation, motion pause/resume and live OS reduced-motion changes. Exact results belong in the tagged release/CI records; synthetic checks do not discharge the remaining hardware/security gates.
+- The packaged-runtime regression is `bun run check:app`, also run by Windows CI after the build. It verifies the archive/checksum boundary and launches bundled `Auto-Mate.exe --check` with only Windows system folders on `PATH`, from a spaced Unicode extraction path. Initial verification exposed Windows PowerShell ZIP extraction's legacy long-path failure; use a short extraction location rather than claiming arbitrary long-path support.
+- An actual Chromium video playback test failed on the original VP9 encode with `PIPELINE_ERROR_DECODE`. Re-encoding both video formats as SDR BT.709 limited-range yuv420p, with VP9 profile 0 and no ICC side data, restored observed WebM playback. FFmpeg is an authoring dependency of the separate homepage only, not an application release asset.
+- Local release verification observed all 171 existing tests passing, typecheck, native ACL/privacy/refusal/cross-console Unicode smoke, and actual DPAPI/Chromium execution. The extracted application also completed all five real `--check` assertions with global Bun/Node excluded from `PATH`, from a spaced accented-character path. The initial long extraction path failed before any application launch; reducing that path fixed the extraction check without relaxing authentication or runtime assertions.
+- GitHub now reports [PR #6](https://github.com/anujparwal/Auto-Mate/pull/6) merged. Preserve the user's previous merges when integrating the release branch; a merged PR alone is not a verification result.
+
+
 ## Current boundaries that must not regress
 
 - Models cannot access plaintext, ciphertext exports, vault listings, browser handles, owner pixels, or grant APIs. Approval authorizes trusted insertion, not secret delivery to AI.
@@ -86,7 +102,7 @@ The initial wish list also included configurable categories, destination blackli
 - Normal native operations require actual OS verification. Synthetic tests are restricted to isolated temporary paths, separate DPAPI entropy, and `.test` origins; they are not a bypass for real domains or normal vaults.
 - Audit failure stops execution; diagnostics/journals must not expose URLs, private IDs, credential values, tokens, or secret fingerprints.
 - Do not claim remote signup/login/payment success from filling alone, universal redaction, hard real-time teardown, signed distribution, or independent security review.
-- Public hosting must distribute only reviewed static files/source. It must not expose `exposeBinding` owner commands, native brokers, a local vault HTTP port, or model keys to remote pages.
+- Public homepage hosting distributes reviewed static marketing files and the labeled simulated film only. It must never expose owner commands, native brokers, application vaults, model keys, or a local vault HTTP port. Public application archives require a separate explicit distribution decision.
 
 ## Remaining verification and release gates
 
@@ -95,7 +111,7 @@ The initial wish list also included configurable categories, destination blackli
 - End-to-end verification against the actual user-supplied OpenAI-compatible API: valid/unsupported requests, authentication refusal, consent, latency, malformed-output refusal, and cancellation. Hosting and model setup are explicitly outside this task.
 - Android UI/biometric/Keystore behavior and browser automation: prior host build/unit/signature checks are not device/runtime proof; no connected device was available.
 - Independent security review, supported recovery/export strategy, signed/versioned releases, and site-specific compatibility checks before private credentials or public production recommendations.
-- Repository/Pages permissions, hosting account/domain/TLS, redistribution review, and deployment approval. The repo remains private unless the user explicitly changes that choice.
+- Application source and the first preview release remain private by explicit user choice. Public homepage hosting, application signing/redistribution review, domain/TLS, and any later public application distribution are separate decisions and verification gates.
 
 ## Navigation for future work
 
@@ -105,7 +121,7 @@ The initial wish list also included configurable categories, destination blackli
 - `src/autofill.ts`, `src/policy.ts`, `src/preview-capture.ts`: discovery/disclosure, authorization, evidence/redaction.
 - `src/windows-vault.ts`, `src/vault-record.ts`, `platforms/windows/`: trusted native storage and session lifecycle.
 - `src/task-planner.ts`, `docs/model-api.md`: existing bounded model contract and supplied-API connection instructions.
-- `tools/setup-windows.ps1`, `tools/build-site.ps1`, `.github/workflows/`: installation and release/deployment checks.
+- `tools/setup-windows.ps1`, `tools/build-app.ps1`, `tools/check-app.ps1`, `platforms/windows/launcher/`, `.github/workflows/`: source setup, application-only packaging, extracted-runtime verification, native launcher and Windows CI. The public homepage has its own repository/build/deployment.
 - Work on the actual `Auto-Mate` checkout, not an empty temporary synthetic-preview directory. Generated `dist/`, `.local/`, caches, keys, and vaults must stay untracked.
 
 ## Conversation sources
