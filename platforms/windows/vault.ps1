@@ -103,6 +103,10 @@ param (
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# Child processes may inherit PowerShell 7 module paths. Resolve native cmdlets
+# from this host's built-ins, not an incompatible parent's module directory.
+$env:PSModulePath = [System.IO.Path]::Combine($PSHOME, "Modules")
+
 # Ensure Cryptography Assemblies are loaded
 try {
     Add-Type -AssemblyName System.Security -ErrorAction Stop
