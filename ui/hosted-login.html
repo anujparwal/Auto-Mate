@@ -9,12 +9,12 @@
   <script src="/hosted-login.js" defer></script>
 </head>
 <body>
-  <header class="app-header"><div class="identity"><strong>Auto-Mate</strong><span>Hosted browser</span></div><span class="boundary">Invite-only · Your approval</span></header>
+  <header class="app-header"><div class="identity"><strong>Auto-Mate</strong><span>Hosted browser</span></div><span class="boundary">Your approval</span></header>
   <main class="hosted-auth">
     <section class="approval-card" aria-labelledby="auth-heading">
       <h1 id="auth-heading">Sign in to Auto-Mate</h1>
       <p>Your browser runs on the operator’s laptop. Your device shows its live view and asks permission before disclosures and website button clicks.</p>
-      <div class="hosted-auth-tabs" role="group" aria-label="Account action"><button id="auth-login" type="button" aria-pressed="true">Sign in</button><button id="auth-register" type="button" aria-pressed="false">Create invited account</button></div>
+      <div class="hosted-auth-tabs" role="group" aria-label="Account action"><button id="auth-login" type="button" aria-pressed="true">Sign in</button><button id="auth-register" type="button" aria-pressed="false">Create account</button></div>
       <form id="auth-form" autocomplete="on">
         <label for="auth-username">Auto-Mate username</label>
         <input id="auth-username" name="username" autocomplete="username" minlength="3" maxlength="64" pattern="[a-z0-9][a-z0-9_.\-]{2,63}" required autofocus aria-describedby="username-help">
@@ -22,7 +22,6 @@
         <label id="auth-key-label" for="auth-key">Your key / passphrase</label>
         <input id="auth-key" name="password" type="password" autocomplete="current-password" minlength="12" maxlength="1024" required aria-describedby="key-help">
         <p id="key-help" class="approval-notice">At least 12 characters. Your key encrypts your vault; spaces count. A lost key cannot recover the vault. This is not a destination website password or a Windows PIN.</p>
-        <div id="registration-fields" hidden><label for="auth-registration-key">Registration code from the operator</label><input id="auth-registration-key" type="password" autocomplete="off" minlength="16" maxlength="1024" disabled></div>
         <p id="auth-error" class="approval-error" role="alert" hidden></p>
         <button id="auth-submit" class="primary" type="submit">Sign in</button>
         <p id="auth-status" role="status" aria-live="polite"></p>

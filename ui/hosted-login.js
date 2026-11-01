@@ -6,15 +6,11 @@
   function mode(next) {
     if (busy) return;
     registering = next;
-    byId('auth-heading').textContent = next ? 'Create your invited account' : 'Sign in to Auto-Mate';
+    byId('auth-heading').textContent = next ? 'Create your account' : 'Sign in to Auto-Mate';
     byId('auth-submit').textContent = next ? 'Create account & sign in' : 'Sign in';
     byId('auth-key-label').textContent = next ? 'Choose your key / passphrase' : 'Your key / passphrase';
     byId('auth-key').autocomplete = next ? 'new-password' : 'current-password';
     byId('auth-key').value = '';
-    byId('auth-registration-key').value = '';
-    byId('auth-registration-key').disabled = !next;
-    byId('auth-registration-key').required = next;
-    byId('registration-fields').hidden = !next;
     byId('auth-error').hidden = true;
     byId('auth-login').setAttribute('aria-pressed', String(!next));
     byId('auth-register').setAttribute('aria-pressed', String(next));
@@ -26,7 +22,6 @@
     if (busy) return;
     busy = true;
     const payload = { username: byId('auth-username').value, key: byId('auth-key').value };
-    if (registering) payload.registrationKey = byId('auth-registration-key').value;
     for (const control of document.querySelectorAll('input, button')) control.disabled = true;
     byId('auth-error').hidden = true;
     byId('auth-status').textContent = registering ? 'Creating encrypted vault…' : 'Verifying your key…';
@@ -53,12 +48,9 @@
       byId('auth-status').textContent = '';
     } finally {
       byId('auth-key').value = '';
-      byId('auth-registration-key').value = '';
       delete payload.key;
-      delete payload.registrationKey;
       busy = false;
       for (const control of document.querySelectorAll('input, button')) control.disabled = false;
-      byId('auth-registration-key').disabled = !registering;
     }
   });
 })();

@@ -101,6 +101,7 @@ function validateKey(key: unknown): string {
 }
 
 function validateRegistrationKey(key: unknown): string {
+  if (key === '' || key === 'none' || key === undefined || key === null) return '';
   if (typeof key !== 'string' || key.length < 16) {
     throw new PolicyError('INVALID_REGISTRATION_KEY');
   }
@@ -1015,9 +1016,10 @@ export class HostedAccounts {
   }
 
   async register(username: string, key: string, registrationKey: string): Promise<HostedAccountSession> {
-    // 1. Safe registrationKey check: wrong registration code cannot create data
-    if (typeof registrationKey !== 'string' || !safeStringEqual(registrationKey, this.#registrationKey)) {
-      throw new PolicyError('INVALID_REGISTRATION_KEY');
+    if (this.#registrationKey && this.#registrationKey.length > 0 && this.#registrationKey !== 'none') {
+      if (typeof registrationKey !== 'string' || !safeStringEqual(registrationKey, this.#registrationKey)) {
+        throw new PolicyError('INVALID_REGISTRATION_KEY');
+      }
     }
 
     // 2. Format validation

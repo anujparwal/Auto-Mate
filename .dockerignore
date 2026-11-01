@@ -1,0 +1,10 @@
+dist
+.git
+.github
+.local
+.impeccable
+.taste-skill
+tests
+platforms
+*.zip
+*.log

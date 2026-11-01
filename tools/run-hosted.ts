@@ -5,6 +5,7 @@ import { openHostedServer, type HostedServerInstance } from '../src/hosted-serve
 import { openHostedTunnel, type HostedTunnelInstance } from '../src/hosted-tunnel';
 
 export interface ParsedHostedOptions {
+  readonly host?: string;
   readonly publicOrigin?: string;
   readonly port?: number;
   readonly dataDirectory: string;
@@ -21,25 +22,36 @@ export function resolveHostedOptions(args: readonly string[] = []): ParsedHosted
     throw new Error('INVALID_HOSTED_ARGUMENT: Hosted mode accepts no command-line arguments. Configure via environment variables.');
   }
 
-  const rawOrigin = process.env.AUTOMATE_HOSTED_PUBLIC_ORIGIN?.trim();
+  const rawOrigin = process.env.AUTOMATE_HOSTED_PUBLIC_ORIGIN?.trim() ||
+    (process.env.RAILWAY_PUBLIC_DOMAIN?.trim() ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN.trim()}` : undefined) ||
+    (process.env.RAILWAY_STATIC_URL?.trim() ? `https://${process.env.RAILWAY_STATIC_URL.trim()}` : undefined);
   const publicOrigin = rawOrigin && rawOrigin.length > 0 ? rawOrigin : undefined;
 
   let port: number | undefined;
-  const rawPort = process.env.AUTOMATE_HOSTED_PORT?.trim();
+  const rawPort = process.env.PORT?.trim() || process.env.AUTOMATE_HOSTED_PORT?.trim();
   if (rawPort && rawPort.length > 0) {
     const envPort = parseInt(rawPort, 10);
     if (isNaN(envPort) || envPort < 0 || envPort > 65535) {
-      throw new Error(`Invalid AUTOMATE_HOSTED_PORT environment variable: ${process.env.AUTOMATE_HOSTED_PORT}`);
+      throw new Error(`Invalid PORT environment variable: ${rawPort}`);
     }
     port = envPort;
   }
 
-  const defaultDataDir = process.env.LOCALAPPDATA
-    ? join(process.env.LOCALAPPDATA, 'AutoMate', 'hosted')
-    : join(homedir(), '.local', 'share', 'AutoMate', 'hosted');
+  const host = process.env.HOST?.trim() || (process.env.PORT ? '0.0.0.0' : undefined);
 
-  const rawDataDir = process.env.AUTOMATE_HOSTED_DATA_DIR?.trim();
-  const dataDirectory = rawDataDir && rawDataDir.length > 0 ? rawDataDir : defaultDataDir;
+  let defaultDataDir: string;
+  if (process.env.AUTOMATE_HOSTED_DATA_DIR?.trim()) {
+    defaultDataDir = process.env.AUTOMATE_HOSTED_DATA_DIR.trim();
+  } else if (process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim()) {
+    defaultDataDir = process.env.RAILWAY_VOLUME_MOUNT_PATH.trim();
+  } else if (process.platform === 'win32') {
+    defaultDataDir = process.env.LOCALAPPDATA
+      ? join(process.env.LOCALAPPDATA, 'AutoMate', 'hosted')
+      : join(homedir(), '.local', 'share', 'AutoMate', 'hosted');
+  } else {
+    defaultDataDir = '/data';
+  }
+  const dataDirectory = defaultDataDir;
 
   const rawKey = process.env.AUTOMATE_HOSTED_REGISTRATION_KEY?.trim();
 
@@ -47,18 +59,18 @@ export function resolveHostedOptions(args: readonly string[] = []): ParsedHosted
   let isKeySupplied: boolean;
 
   if (rawKey && rawKey.length > 0) {
-    if (rawKey.length < 16) {
+    if (rawKey !== 'none' && rawKey.length < 16) {
       throw new Error('INVALID_REGISTRATION_KEY: Registration key must be at least 16 characters long.');
     }
-    registrationKey = rawKey;
+    registrationKey = rawKey === 'none' ? '' : rawKey;
     isKeySupplied = true;
   } else {
-    // Generate a cryptographically strong 32-character registration invite key
-    registrationKey = randomBytes(24).toString('base64url');
+    registrationKey = '';
     isKeySupplied = false;
   }
 
   return {
+    host,
     publicOrigin,
     port,
     dataDirectory,
@@ -114,6 +126,7 @@ export async function runHosted(args: readonly string[] = []): Promise<void> {
   try {
     // 1. Open the hosted server (with supplied origin or undefined for two-phase bootstrap)
     server = await openHostedServer({
+      host: options.host,
       publicOrigin: options.publicOrigin,
       port: options.port,
       dataDirectory: options.dataDirectory,
@@ -150,11 +163,10 @@ export async function runHosted(args: readonly string[] = []): Promise<void> {
     console.log(`Public HTTPS Link:   ${publicUrl}`);
     console.log(`Local Bound Port:    ${server.port}`);
     console.log(`Data Directory:      ${options.dataDirectory}`);
-    if (options.isKeySupplied) {
-      console.log('Registration Key:    [Supplied via environment / startup configuration]');
-    } else {
+    if (options.registrationKey) {
       console.log(`Registration Key:    ${options.registrationKey}`);
-      console.log('                     [PRINTED ONCE - Invite code. Share only with trusted remote users.]');
+    } else {
+      console.log('Registration:        Open (No operator code required)');
     }
     console.log('--------------------------------------------------------------------------------');
     console.log('[TRUST & SECURITY NOTICE]');

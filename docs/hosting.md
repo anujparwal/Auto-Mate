@@ -88,6 +88,25 @@ When `AUTOMATE_HOSTED_PUBLIC_ORIGIN` is unset, Auto-Mate manages an ephemeral Cl
 - Download cache: Verified and cached in `%LOCALAPPDATA%\AutoMate\tools\cloudflared-2026.10.7-amd64.exe`.
 - Corrupt or mismatched binaries fail closed and are rejected.
 
+
+### Deploying to Railway (Cloud Hosting)
+
+Auto-Mate includes a production `Dockerfile` and `railway.json` for one-click deployment to [Railway](https://railway.com):
+
+1. **Fork or Push to GitHub**: Ensure your repository contains the root `Dockerfile` and `railway.json`.
+2. **Create a Railway Project**:
+   - In Railway, click **New Project** $\to$ **Deploy from GitHub repo**.
+   - Select `anujparwal/Auto-Mate` (branch `main`).
+3. **Attach a Persistent Volume** *(Recommended for user vault data)*:
+   - In the service settings, add a **Volume**.
+   - Mount path: `/data`.
+4. **Generate Public Domain**:
+   - Under service **Networking**, click **Generate Domain** (e.g. `auto-mate-production.up.railway.app`).
+   - The container automatically reads `RAILWAY_PUBLIC_DOMAIN` or `RAILWAY_STATIC_URL` and `PORT` to bind and activate the origin.
+5. **Registration Mode**:
+   - By default, registration is **open** (no operator code needed).
+   - To require an operator invite code on your deployment, set the environment variable:
+     `AUTOMATE_HOSTED_REGISTRATION_KEY=your-secret-invite-key-at-least-16-chars`
 ---
 
 ## 3. Account Security and Cryptography

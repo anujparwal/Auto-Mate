@@ -24,10 +24,11 @@ export interface HostedAccountsFactory {
 }
 
 export interface HostedServerOptions {
+  host?: string;
   publicOrigin?: string;
   port?: number;
   dataDirectory: string;
-  registrationKey: string;
+  registrationKey?: string;
   viewer?: Browser;
   headless?: boolean;
   egressProxy?: HostedEgressProxy;
@@ -141,7 +142,7 @@ export async function openHostedServer(options: HostedServerOptions): Promise<Ho
 
   const accountsStore = options.accounts ?? await (options.accountsFactory ?? HostedAccounts).open({
     directory: options.dataDirectory,
-    registrationKey: options.registrationKey,
+    registrationKey: options.registrationKey ?? '',
   });
 
   let egressProxy: HostedEgressProxy | undefined = options.egressProxy;
@@ -422,8 +423,12 @@ export async function openHostedServer(options: HostedServerOptions): Promise<Ho
     const boundAddress = server.address() as net.AddressInfo | null;
     const boundPortStr = boundAddress ? String(boundAddress.port) : '';
 
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const forwardedHostStr = typeof forwardedHost === 'string' ? forwardedHost.split(',')[0]?.trim().toLowerCase() : undefined;
+
     const hostMatches =
       reqHost === expectedHost ||
+      forwardedHostStr === expectedHost ||
       (isLoopbackSmoke &&
         (reqHost === `127.0.0.1:${boundPortStr}` || reqHost === `localhost:${boundPortStr}`));
 
@@ -540,31 +545,30 @@ export async function openHostedServer(options: HostedServerOptions): Promise<Ho
           typeof parsed !== 'object' ||
           !('username' in parsed) ||
           !('key' in parsed) ||
-          !('registrationKey' in parsed) ||
           typeof parsed.username !== 'string' ||
-          typeof parsed.key !== 'string' ||
-          typeof parsed.registrationKey !== 'string'
+          typeof parsed.key !== 'string'
         ) {
           res.writeHead(400, { ...baseHeaders, 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'INVALID_INPUT', message: 'Missing username, key, or registrationKey' }));
+          res.end(JSON.stringify({ error: 'INVALID_INPUT', message: 'Missing username or key' }));
           return;
         }
 
         const username = parsed.username;
         const key = parsed.key;
-        const regKey = parsed.registrationKey;
+        const regKey = typeof (parsed as Record<string, unknown>).registrationKey === 'string' ? (parsed as Record<string, unknown>).registrationKey as string : '';
 
-        // Verify registration key timing-safely
-        const providedBuf = Buffer.from(regKey);
-        const expectedBuf = Buffer.from(options.registrationKey);
-        if (
-          providedBuf.length !== expectedBuf.length ||
-          !crypto.timingSafeEqual(providedBuf, expectedBuf)
-        ) {
-          recordFailedAttempt(clientIp);
-          res.writeHead(403, { ...baseHeaders, 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'INVALID_REGISTRATION_KEY', message: 'Registration key is invalid' }));
-          return;
+        if (options.registrationKey && options.registrationKey.length > 0 && options.registrationKey !== 'none') {
+          const providedBuf = Buffer.from(regKey);
+          const expectedBuf = Buffer.from(options.registrationKey);
+          if (
+            providedBuf.length !== expectedBuf.length ||
+            !crypto.timingSafeEqual(providedBuf, expectedBuf)
+          ) {
+            recordFailedAttempt(clientIp);
+            res.writeHead(403, { ...baseHeaders, 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'INVALID_REGISTRATION_KEY', message: 'Registration code rejected' }));
+            return;
+          }
         }
 
         let accountSession: HostedAccountSession;
@@ -829,7 +833,8 @@ export async function openHostedServer(options: HostedServerOptions): Promise<Ho
   server.headersTimeout = 15_000;
 
   const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<void>();
-  server.listen(options.port ?? 0, '127.0.0.1', () => listenResolve());
+  const bindHost = options.host ?? (process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1'));
+  server.listen(options.port ?? 0, bindHost, () => listenResolve());
   server.once('error', listenReject);
   await listenPromise;
 
