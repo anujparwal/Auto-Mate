@@ -20,14 +20,14 @@ using System.Windows.Forms;
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 [assembly: ComVisible(false)]
-[assembly: AssemblyVersion("0.1.0.1")]
-[assembly: AssemblyFileVersion("0.1.0.2")]
-[assembly: AssemblyInformationalVersion("0.1.0-preview.2")]
+[assembly: AssemblyVersion("0.1.0.3")]
+[assembly: AssemblyFileVersion("0.1.0.3")]
+[assembly: AssemblyInformationalVersion("0.1.0-preview.3")]
 
 namespace AutoMate.Platforms.Windows.Launcher {
     /// <summary>
     /// Encapsulates an owned Windows Job Object configured with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE.
-    /// Ensures all child processes (Bun, Playwright Chromium, PowerShell helpers) are cleanly terminated
+    /// Ensures all child processes (Bun, Playwright Chromium, cloudflared tunnel, PowerShell helpers) are cleanly terminated
     /// by the Windows kernel when the launcher process exits or is terminated.
     /// </summary>
     internal sealed class JobObjectGuard : IDisposable {
@@ -121,7 +121,7 @@ namespace AutoMate.Platforms.Windows.Launcher {
     }
 
     public static class Program {
-        private const string VersionString = "0.1.0-preview.2";
+        private const string VersionString = "0.1.0-preview.3";
         private const string AppTitle = "Auto-Mate";
 
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -237,6 +237,7 @@ namespace AutoMate.Platforms.Windows.Launcher {
             Console.WriteLine();
             Console.WriteLine("Options:");
             Console.WriteLine("  (no arguments)       Launch Auto-Mate Owner Autofill application in Chromium");
+            Console.WriteLine("  --hosted             Run Auto-Mate Hosted remote service with invite-only access");
             Console.WriteLine("  --check              Run offline verification smoke test (headless Chromium + DPAPI)");
             Console.WriteLine("  --version            Display version and runtime details");
             Console.WriteLine("  --help               Display this help message");
@@ -247,6 +248,7 @@ namespace AutoMate.Platforms.Windows.Launcher {
             Console.WriteLine("  - Bundled Playwright Chromium resources located in browsers\\.");
             Console.WriteLine("  - Session audit journal stored per-user at %LOCALAPPDATA%\\AutoMate\\audit.");
             Console.WriteLine("  - Protected vaults stored per-user under Windows DPAPI CurrentUser encryption.");
+            Console.WriteLine("  - Hosted data directory defaults to %LOCALAPPDATA%\\AutoMate\\hosted.");
             Console.WriteLine("  - Child process tree managed by an owned Windows Job Object with kill-on-close limits.");
         }
 
@@ -256,6 +258,7 @@ namespace AutoMate.Platforms.Windows.Launcher {
             Console.WriteLine("Browser Engine: Playwright Chromium revision 1248 (Chrome for Testing 156.0.8078.4)");
             Console.WriteLine("Classification: Unsigned Developer Preview (Private Release)");
             Console.WriteLine("Hardware Authentication: Windows Hello biometric / PIN verification required for normal vaults");
+            Console.WriteLine("Hosted Service: Invite-only remote access via --hosted (optional Cloudflare QuickTunnel)");
         }
 
         private static void ReportError(string title, string message, bool isCheck) {
@@ -270,26 +273,43 @@ namespace AutoMate.Platforms.Windows.Launcher {
         }
 
         public static int Main(string[] args) {
-            // Process basic informational switches
-            if (args.Length == 1) {
-                string arg = args[0].Trim();
-                if (arg == "--help") {
-                    ShowHelp();
-                    return 0;
-                }
-                if (arg == "--version") {
-                    ShowVersion();
-                    return 0;
+            // Process basic informational switches and modes
+            bool hasHelp = false;
+            bool hasVersion = false;
+            bool isCheck = false;
+            bool isHosted = false;
+
+            for (int i = 0; i < args.Length; i++) {
+                string arg = args[i].Trim();
+                if (arg == "--help" || arg == "-h" || arg == "/?") {
+                    hasHelp = true;
+                } else if (arg == "--version" || arg == "-v") {
+                    hasVersion = true;
+                } else if (arg == "--check") {
+                    isCheck = true;
+                } else if (arg == "--hosted") {
+                    isHosted = true;
+                } else {
+                    Console.Error.WriteLine("Unrecognized arguments. Use Auto-Mate.exe --help for usage details.");
+                    return 1;
                 }
             }
 
-            // Determine execution mode
-            bool isCheck = false;
-            if (args.Length == 0) {
-                isCheck = false;
-            } else if (args.Length == 1 && args[0] == "--check") {
-                isCheck = true;
-            } else {
+            if (hasHelp) {
+                ShowHelp();
+                return 0;
+            }
+            if (hasVersion) {
+                ShowVersion();
+                return 0;
+            }
+
+            if (isCheck && isHosted) {
+                Console.Error.WriteLine("Conflicting arguments: --check and --hosted cannot be used together.");
+                return 1;
+            }
+
+            if (args.Length > 1) {
                 Console.Error.WriteLine("Unrecognized arguments. Use Auto-Mate.exe --help for usage details.");
                 return 1;
             }
@@ -338,6 +358,9 @@ namespace AutoMate.Platforms.Windows.Launcher {
 
             // Compose command line: "C:\path\to\bun.exe" run "C:\path\to\target.ts"
             string commandLine = "\"" + bunExe + "\" run \"" + targetScript + "\"";
+            if (isHosted) {
+                commandLine += " --hosted";
+            }
 
             STARTUPINFO si = new STARTUPINFO();
             si.cb = Marshal.SizeOf(typeof(STARTUPINFO));

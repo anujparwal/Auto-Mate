@@ -1,0 +1,5 @@
+{
+  "mode": "cloud",
+  "endpoint": "https://nullify-geometric-decathlon.ngrok-free.dev/v1/chat/completions",
+  "model": "qwen3.5-9b"
+}

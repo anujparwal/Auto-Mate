@@ -266,11 +266,11 @@ function discoverInformationFields({ origin }: { origin: string }): DiscoveryRes
 
 export class InformationSession {
   readonly origin: string;
-  readonly url: string;
   readonly page: Page;
   readonly closed: Promise<void>;
-  readonly fields: readonly { metadata: InformationField; verified: VerifiedField }[];
 
+  #url: string;
+  #fields: readonly { metadata: InformationField; verified: VerifiedField }[];
   readonly #context: BrowserContext;
   #state: 'review' | 'filling' | 'filled' | 'stopped' | 'failed' = 'review';
   #error: string | undefined = undefined;
@@ -281,6 +281,7 @@ export class InformationSession {
   #abortListener?: () => void;
   #isClosed = false;
   #closing?: Promise<void>;
+  #released = false;
 
   private constructor(
     context: BrowserContext,
@@ -292,8 +293,8 @@ export class InformationSession {
     this.#context = context;
     this.page = page;
     this.origin = origin;
-    this.url = url;
-    this.fields = Object.freeze([...fields]);
+    this.#url = url;
+    this.#fields = Object.freeze([...fields]);
 
     const { promise, resolve } = Promise.withResolvers<void>();
     this.closed = promise;
@@ -346,10 +347,18 @@ export class InformationSession {
     return this.#error;
   }
 
+  get url(): string {
+    return this.#url;
+  }
+
+  get fields(): readonly { metadata: InformationField; verified: VerifiedField }[] {
+    return this.#fields;
+  }
+
   static async open(
     browser: Browser,
     url: string,
-    options?: { prepare?: (page: Page) => Promise<void>; signal?: AbortSignal },
+    options?: { prepare?: (page: Page) => Promise<void>; signal?: AbortSignal; allowEmptyFields?: boolean },
   ): Promise<InformationSession> {
     if (!url || typeof url !== 'string') {
       throw new Error('INVALID_URL');
@@ -466,41 +475,46 @@ export class InformationSession {
       }
 
       if (!discovery.fields.length) {
-        await context.close().catch(() => {});
-        throw new Error('UNSUPPORTED_FORM');
+        if (!options?.allowEmptyFields) {
+          await context.close().catch(() => {});
+          throw new Error('UNSUPPORTED_FORM');
+        }
       }
 
-      const fieldRequests: readonly FieldRequest[] = Object.freeze(
-        discovery.fields.map(f => ({
-          id: f.id,
-          credential: 'information:value',
-          name: f.label,
-          category: 'red' as const,
-          fieldSelector: f.fieldSelector,
-          requestSelector: f.requestSelector,
-        })),
-      );
+      let items: Array<{ metadata: InformationField; verified: VerifiedField }> = [];
+      if (discovery.fields.length) {
+        const fieldRequests: readonly FieldRequest[] = Object.freeze(
+          discovery.fields.map(f => ({
+            id: f.id,
+            credential: 'information:value',
+            name: f.label,
+            category: 'red' as const,
+            fieldSelector: f.fieldSelector,
+            requestSelector: f.requestSelector,
+          })),
+        );
 
-      const verifiedFields = await verifyFieldRequests(page, origin, fieldRequests);
+        const verifiedFields = await verifyFieldRequests(page, origin, fieldRequests);
 
-      if (aborted || options?.signal?.aborted) {
-        await context.close().catch(() => {});
-        throw new Error('TASK_STOPPED');
+        if (aborted || options?.signal?.aborted) {
+          await context.close().catch(() => {});
+          throw new Error('TASK_STOPPED');
+        }
+
+        const verifiedMap = new Map(verifiedFields.map(vf => [vf.request.id, vf]));
+        items = discovery.fields.map(f => {
+          const verified = verifiedMap.get(f.id);
+          if (!verified) throw new Error('VERIFICATION_FAILED');
+          const metadata: InformationField = {
+            id: f.id,
+            label: f.label,
+            kind: f.kind,
+            required: f.required,
+            ...(f.options ? { options: Object.freeze([...f.options]) } : {}),
+          };
+          return Object.freeze({ metadata: Object.freeze(metadata), verified });
+        });
       }
-
-      const verifiedMap = new Map(verifiedFields.map(vf => [vf.request.id, vf]));
-      const items = discovery.fields.map(f => {
-        const verified = verifiedMap.get(f.id);
-        if (!verified) throw new Error('VERIFICATION_FAILED');
-        const metadata: InformationField = {
-          id: f.id,
-          label: f.label,
-          kind: f.kind,
-          required: f.required,
-          ...(f.options ? { options: Object.freeze([...f.options]) } : {}),
-        };
-        return Object.freeze({ metadata: Object.freeze(metadata), verified });
-      });
 
       if (options?.signal) {
         options.signal.removeEventListener('abort', onInspectionAbort);
@@ -546,7 +560,7 @@ export class InformationSession {
     selected: readonly string[],
     getValue: (fieldId: string) => Promise<string>,
   ): Promise<void> {
-    if (this.#state !== 'review') {
+    if (this.#state !== 'review' || this.#released) {
       this.#state = 'failed';
       this.#error = 'INVALID_STATE';
       return;
@@ -584,7 +598,7 @@ export class InformationSession {
       }
 
       const checkAuthority = () => {
-        if (signal!.aborted || this.#isClosed) throw new Error('TASK_STOPPED');
+        if (signal!.aborted || this.#isClosed || this.#released) throw new Error('TASK_STOPPED');
         for (const item of selectedItems) {
           const request = item.verified.request;
           if (policy.category(request.credential) !== 'red') throw new Error('CATEGORY_MISMATCH');
@@ -675,5 +689,97 @@ export class InformationSession {
       throw new Error('BROWSER_CLOSE_FAILED');
     });
     return this.#closing;
+  }
+
+  releaseForOwnerAction(): void {
+    if (this.#state === 'filling') throw new Error('INVALID_STATE');
+    this.#released = true;
+    if (this.#abortListener && this.#signal) {
+      this.#signal.removeEventListener('abort', this.#abortListener);
+      this.#abortListener = undefined;
+    }
+    if (this.#activePolicy && this.#activeTask) {
+      const taskState = this.#activePolicy.state(this.#activeTask);
+      if (taskState === 'normal' || taskState === 'protected') this.#activePolicy.finish(this.#activeTask, 'completed');
+      this.#activePolicy = undefined;
+      this.#activeTask = undefined;
+    }
+    this.#signal = undefined;
+  }
+
+  async refreshAfterOwnerAction(): Promise<void> {
+    if (this.#isClosed) throw new Error('SESSION_CLOSED');
+    this.releaseForOwnerAction();
+
+    let currentOrigin: string;
+    try {
+      const parsed = new URL(this.page.url());
+      if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash) {
+        throw new Error('ORIGIN_MISMATCH');
+      }
+      currentOrigin = httpsOrigin(parsed.origin);
+    } catch {
+      await this.close().catch(() => {});
+      throw new Error('ORIGIN_MISMATCH');
+    }
+
+    if (currentOrigin !== this.origin) {
+      await this.close().catch(() => {});
+      throw new Error('ORIGIN_MISMATCH');
+    }
+
+    for (const item of this.#fields) {
+      void item.verified.field.dispose().catch(() => {});
+      void item.verified.source.dispose().catch(() => {});
+    }
+
+    try {
+      const discovery: DiscoveryResult = await this.page.evaluate(discoverInformationFields, { origin: this.origin });
+
+      if (!discovery.fields.length) {
+        this.#fields = Object.freeze([]);
+      } else {
+        const fieldRequests: readonly FieldRequest[] = Object.freeze(
+          discovery.fields.map(f => ({
+            id: f.id,
+            credential: 'information:value',
+            name: f.label,
+            category: 'red' as const,
+            fieldSelector: f.fieldSelector,
+            requestSelector: f.requestSelector,
+          })),
+        );
+
+        const verifiedFields = await verifyFieldRequests(this.page, this.origin, fieldRequests);
+        const verifiedMap = new Map(verifiedFields.map(vf => [vf.request.id, vf]));
+        const items = discovery.fields.map(f => {
+          const verified = verifiedMap.get(f.id);
+          if (!verified) throw new Error('VERIFICATION_FAILED');
+          const metadata: InformationField = {
+            id: f.id,
+            label: f.label,
+            kind: f.kind,
+            required: f.required,
+            ...(f.options ? { options: Object.freeze([...f.options]) } : {}),
+          };
+          return Object.freeze({ metadata: Object.freeze(metadata), verified });
+        });
+        this.#fields = Object.freeze(items);
+      }
+
+      this.#url = this.page.url();
+      this.#state = 'review';
+      this.#error = undefined;
+      this.#released = false;
+      this.#activePolicy = undefined;
+      this.#activeTask = undefined;
+      this.#signal = undefined;
+      this.#abortListener = undefined;
+    } catch (err) {
+      this.#state = 'failed';
+      this.#error = 'SETUP_FAILED';
+      await this.close().catch(() => {});
+      throw err;
+    }
   }
 }

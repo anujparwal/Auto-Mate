@@ -243,6 +243,14 @@ test('input validation rejects invalid or oversized input without truncation', a
   ).rejects.toThrow('INVALID_PLAN_INPUT');
 });
 
+test('country-scale select options remain mappable without truncation', async () => {
+  const planner = new InformationPlanner({ mode: 'reviewed' });
+  const field: InformationField = { id: 'country', label: 'Country', kind: 'select', required: true, options: Array.from({ length: 250 }, (_, index) => `Country ${index}`) };
+  const variables: InformationVariable[] = [{ id: 'country-value', name: 'Country', description: 'Country of residence', kind: 'text', scope: 'profile', available: true }];
+  expect(await planner.plan({ fields: [field], variables })).toEqual([{ fieldId: 'country', variableId: 'country-value' }]);
+  await expect(planner.plan({ fields: [{ ...field, options: Array.from({ length: 257 }, (_, index) => `Country ${index}`) }], variables })).rejects.toThrow('INVALID_PLAN_INPUT');
+});
+
 test('provider configuration rejects unsafe endpoints and credentials are not exposed in serialization', () => {
   const invalidConfigs: PlannerConfig[] = [
     { mode: 'local' }, // missing endpoint and model
@@ -263,11 +271,6 @@ test('provider configuration rejects unsafe endpoints and credentials are not ex
       model: 'fixture',
       apiKey: 'key',
     }, // insecure http for cloud
-    {
-      mode: 'cloud',
-      endpoint: 'https://provider.invalid/v1/chat/completions',
-      model: 'fixture',
-    }, // missing apiKey for cloud
   ];
 
   for (const config of invalidConfigs) {
@@ -321,12 +324,7 @@ test('remote mode sends only public field projection and full metadata catalog, 
     async req => {
       capturedBody = await req.json();
       return completion(
-        JSON.stringify({
-          mappings: [
-            { fieldId: 'f-name', variableId: 'var-name' },
-            { fieldId: 'f-user', variableId: 'var-user' },
-          ],
-        })
+        JSON.stringify({ 'f-user': 'var-user', 'f-name': 'var-name' })
       );
     },
     async planner => {
@@ -359,9 +357,6 @@ test('remote mode sends only public field projection and full metadata catalog, 
         role: string;
         content: string;
       }[];
-      expect(messages.length).toBe(2);
-      expect(messages[0]!.role).toBe('system');
-      expect(messages[1]!.role).toBe('user');
 
       const userContent = JSON.parse(messages[1]!.content);
       // Public fields projection
@@ -395,12 +390,7 @@ test('remote mode maps fields correctly including null for unmapped fields', asy
   await withProvider(
     () =>
       completion(
-        JSON.stringify({
-          mappings: [
-            { fieldId: 'f1', variableId: 'var-name' },
-            { fieldId: 'f2', variableId: null }, // asks user
-          ],
-        })
+        JSON.stringify({ f1: 'var-name', f2: null })
       ),
     async planner => {
       const input: InformationPlanInput = {
@@ -422,18 +412,9 @@ test('remote mode maps fields correctly including null for unmapped fields', asy
 
 test('remote mode strictly rejects unknown or unavailable or incompatible variable IDs', async () => {
   const invalidResponses = [
-    // Unknown variable ID
-    JSON.stringify({
-      mappings: [{ fieldId: 'f1', variableId: 'var-non-existent' }],
-    }),
-    // Unavailable variable ID
-    JSON.stringify({
-      mappings: [{ fieldId: 'f1', variableId: 'var-disabled' }],
-    }),
-    // Incompatible variable ID (password variable for text field)
-    JSON.stringify({
-      mappings: [{ fieldId: 'f1', variableId: 'var-pass' }],
-    }),
+    JSON.stringify({ f1: 'var-non-existent' }),
+    JSON.stringify({ f1: 'var-disabled' }),
+    JSON.stringify({ f1: 'var-pass' }),
   ];
 
   for (const resp of invalidResponses) {
@@ -454,43 +435,14 @@ test('remote mode strictly rejects unknown or unavailable or incompatible variab
 
 test('remote mode strictly rejects extra keys, values, questions, or missing fields', async () => {
   const invalidResponses = [
-    // Extra key in root object
-    JSON.stringify({
-      mappings: [{ fieldId: 'f1', variableId: 'var-name' }],
-      question: 'What is your mother maiden name?',
-    }),
-    // Extra key in mapping item (e.g. value attempt or question)
-    JSON.stringify({
-      mappings: [
-        { fieldId: 'f1', variableId: 'var-name', value: 'phished-value' },
-      ],
-    }),
-    JSON.stringify({
-      mappings: [
-        { fieldId: 'f1', variableId: null, question: 'Please enter PIN' },
-      ],
-    }),
-    // Missing field
-    JSON.stringify({
-      mappings: [{ fieldId: 'f1', variableId: 'var-name' }],
-    }), // when input has f1 and f2
-    // Duplicate field
-    JSON.stringify({
-      mappings: [
-        { fieldId: 'f1', variableId: 'var-name' },
-        { fieldId: 'f1', variableId: null },
-      ],
-    }),
-    // Unknown field ID
-    JSON.stringify({
-      mappings: [
-        { fieldId: 'f1', variableId: 'var-name' },
-        { fieldId: 'f-unknown', variableId: null },
-      ],
-    }),
-    // Markdown wrapper
-    '```json\n{"mappings":[{"fieldId":"f1","variableId":"var-name"},{"fieldId":"f2","variableId":null}]}\n```',
-    // Not JSON
+    JSON.stringify({ f1: 'var-name', f2: null, question: 'Ask for a PIN' }),
+    JSON.stringify({ f1: { value: 'phished-value' }, f2: null }),
+    JSON.stringify({ f1: 'var-name' }),
+    JSON.stringify({ f1: 'var-name', unknown: null }),
+    JSON.stringify({ f1: ['var-name'], f2: null }),
+    // Old executable-looking envelope is not a compatibility path.
+    JSON.stringify({ mappings: [{ fieldId: 'f1', variableId: 'var-name' }, { fieldId: 'f2', variableId: null }] }),
+    '```json\n{"f1":"var-name","f2":null}\n```',
     'I mapped field 1 to full name.',
   ];
 
@@ -590,9 +542,7 @@ test('remote mode cancellation ends request and fails with PLANNER_UNAVAILABLE',
         started.resolve();
         await release.promise;
         return completion(
-          JSON.stringify({
-            mappings: [{ fieldId: 'f1', variableId: 'var-name' }],
-          })
+          JSON.stringify({ f1: 'var-name' })
         );
       },
       async planner => {

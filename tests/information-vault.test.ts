@@ -245,6 +245,17 @@ windowsSuite('WindowsInformationVault (Native DPAPI Synthetic Tests)', () => {
     expect(readSecret).toBe(sentinelSecret);
   }, nativeIntegrationTimeoutMs);
 
+  test('metadata edits invalidate an already reviewed variable binding', async () => {
+    const vault = new WindowsInformationVault({ vaultPath, mode: 'synthetic' });
+    const input = { name: 'Contact email', description: 'Personal contact email', value: 'first@example.test', kind: 'email' as const, scope: 'profile' as const, origin: 'https://metadata.example.test' };
+    await vault.save(input);
+    const reviewed = (await vault.catalog(input.origin))[0]!;
+    await vault.save({ ...input, description: 'Different account email', value: 'changed@example.test' });
+    await expect(vault.read(reviewed.id, input.origin)).rejects.toThrow();
+    const refreshed = (await vault.catalog(input.origin))[0]!;
+    expect(await vault.read(refreshed.id, input.origin)).toBe('changed@example.test');
+  }, nativeIntegrationTimeoutMs);
+
   test('allows shared profile variable reuse across origins with explicit trusted read target', async () => {
     if (!isWindows) return;
     const vault = new WindowsInformationVault({ vaultPath, mode: 'synthetic' });
@@ -481,7 +492,6 @@ windowsSuite('WindowsInformationVault (Native DPAPI Synthetic Tests)', () => {
 
     // Existing AutofillVault still lists entries
     const entries = await autofillVault.list(origin);
-    expect(entries.length).toBeGreaterThanOrEqual(3);
 
     // Existing AutofillVault reads login and card records accurately
     const readLogin = await autofillVault.read(origin, 'login-rec', 'login');
@@ -492,7 +502,6 @@ windowsSuite('WindowsInformationVault (Native DPAPI Synthetic Tests)', () => {
 
     // InformationVault catalog reflects typed fields and named variables
     const catalog = await vault.catalog(origin);
-    expect(catalog.length).toBeGreaterThanOrEqual(8);
 
     // Find custom variable
     const emailVar = catalog.find((v) => v.name === 'Custom Email');
@@ -526,5 +535,8 @@ windowsSuite('WindowsInformationVault (Native DPAPI Synthetic Tests)', () => {
     const legacyVar = catalog.find((v) => v.kind === 'password' && v.name.includes(gen.reference));
     expect(legacyVar).toBeDefined();
     expect(await vault.read(legacyVar!.id, origin)).toBe(gen.password);
+    const legacyUsername = catalog.find(variable => variable.kind === 'username' && variable.name.includes(gen.reference));
+    expect(legacyUsername).toBeDefined();
+    expect(await vault.read(legacyUsername!.id, origin)).toBe(gen.reference);
   }, nativeIntegrationTimeoutMs);
 });

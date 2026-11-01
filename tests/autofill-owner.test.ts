@@ -101,10 +101,11 @@ async function fixture(optionsOrRead?: (() => Promise<VaultRecord>) | FixtureOpt
     };
   });
 
-  async function inspect(path = '/') {
+  async function inspect(path = '/', kind = 'login') {
     await app.page.locator('#website-url').fill(origin + path);
+    await app.page.locator('#record-kind').selectOption(kind);
     await app.page.locator('#inspect').click();
-    await app.page.waitForFunction(() => document.querySelector('#phase')?.textContent === 'Awaiting field approval');
+    await app.page.waitForFunction(() => document.querySelector('#phase')?.textContent === 'Awaiting approval');
   }
 
   const send = (command: unknown) => app.page.evaluate(async cmd => {

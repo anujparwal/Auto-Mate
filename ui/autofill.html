@@ -11,14 +11,15 @@
 <body>
   <header class="app-header">
     <div class="identity"><strong>Auto-Mate</strong><span>Vault &amp; website autofill</span></div>
-    <span class="boundary">Owner only · No vault access for AI</span>
+    <span class="boundary">Owner approval · Vault values stay out of AI</span>
   </header>
   <main>
     <section class="task-heading">
       <div><h1>Your vault. Your approval.</h1><p>Store data privately, then approve individual disclosures.</p></div>
+      <div id="hosted-session" hidden><span id="hosted-user"></span><button id="hosted-logout" type="button">Sign out &amp; close browser</button></div>
       <button id="stop" type="button">Stop &amp; close website</button>
     </section>
-    <p class="approval-notice"><strong>Development software.</strong> Windows Hello is required for normal vault operations. Verify authentication and lifecycle behavior on your hardware before using private data. Filling discloses approved data to the website and its scripts; Stop cannot undo that disclosure. The app does not click Login, Pay, or Submit.</p>
+    <p id="authentication-notice" class="approval-notice"><strong>Development software.</strong> Local mode requires Windows Hello for vault operations. Filling discloses approved data to the website and its scripts; Stop cannot undo that disclosure. No autonomous submissions.</p>
     <div class="task-meta"><span id="destination">No website open</span><span id="phase" role="status" aria-live="polite">Ready</span></div>
     <div id="error" class="approval-error" role="alert" hidden></div>
     <p id="message" role="status" aria-live="polite"></p>
@@ -26,8 +27,8 @@
     <div class="autofill-workspace">
       <aside id="vault-column" class="approval-card vault-column" aria-labelledby="vault-heading">
         <div class="vault-heading"><h2 id="vault-heading">Vault</h2><span id="vault-status" class="approval-badge">Metadata locked</span></div>
-        <p class="approval-notice">Add a login or card without inspecting any website. Data stays encrypted in the native vault; every save, list, and retrieval requires Windows Hello.</p>
-        <p class="vault-boundary"><strong>AI boundary:</strong> no vault API, plaintext, ciphertext export, or preview access. Approval authorizes trusted code to fill selected fields—not reveal values to the agent.</p>
+        <p id="vault-authentication-notice" class="approval-notice">Add a login, card, or named variable. Local vault operations require Windows Hello; hosted operations require your active key-authenticated session.</p>
+        <p class="vault-boundary"><strong>AI boundary:</strong> only explicitly consented variable metadata is shared. Values, encrypted vault files, and preview images are not model inputs. Names and descriptions can themselves contain personal data.</p>
         <form id="save-form" class="vault-form" autocomplete="off">
           <label for="vault-origin">Allowed HTTPS origin</label>
           <input id="vault-origin" type="url" required maxlength="2048" placeholder="https://example.com" autocomplete="off">
@@ -95,21 +96,22 @@
           <h2 id="website-heading">1. Inspect a website · No vault access</h2>
           <form id="inspect-form" class="autofill-grid">
             <label>HTTPS page URL<input id="website-url" type="url" required maxlength="2048" value="https://the-internet.herokuapp.com/login" autocomplete="off"></label>
-            <label>Record type<select id="record-kind"><option value="login">Login</option><option value="card">Payment card</option><option value="information">All form fields (Agent assisted)</option></select></label>
+            <label>Record type<select id="record-kind"><option value="login" selected>Login</option><option value="card">Payment card</option><option value="information">All form fields (Agent assisted)</option></select></label>
             <button id="inspect" type="submit">Inspect website</button>
           </form>
           <div class="task-plan-actions"><button id="example-login" type="button">Public login test</button><button id="example-card" type="button">Public card test</button></div>
-          <p class="approval-notice">The website opens in a separate protected browser. Only unique, explicitly labelled fields are supported. Off-origin redirects, embedded payment frames, ambiguous forms, CAPTCHA, and MFA are not bypassed.</p>
+          <p class="approval-notice">The website runs in an isolated browser; its masked live view appears alongside these controls. Only uniquely labelled fields are supported. Off-origin redirects, embedded forms, CAPTCHA, and MFA are not bypassed.</p>
         </section>
         <section class="approval-card" aria-labelledby="approval-heading">
           <h2 id="approval-heading">2. Approve individual disclosures</h2>
           <div id="information-banner" class="information-banner" hidden>
-            <p class="vault-boundary"><strong>Agent boundary:</strong> The agent can see all variable names and descriptions in your vault to map which variable goes into what field. <strong>Secret values are NEVER sent to the agent.</strong> Whenever info is missing, a dialogue box will prompt you.</p>
+            <p class="vault-boundary"><strong>Agent boundary:</strong> review all variable names and descriptions below, then explicitly consent to sharing this metadata for field mapping. Vault values are never retrieved for model planning. Unknown information opens a user-entry dialog.</p>
+            <p id="info-provider" class="approval-notice"></p>
             <div class="task-plan-actions">
               <button id="info-load-catalog" type="button">1. Authenticate &amp; list vault variables</button>
             </div>
             <details id="info-catalog-details" class="info-catalog-details" hidden>
-              <summary>Vault variables visible to Agent (<span id="info-catalog-count">0</span> variables)</summary>
+              <summary>Review vault metadata before sharing (<span id="info-catalog-count">0</span> variables)</summary>
               <div id="info-catalog-list" class="info-catalog-list"></div>
             </details>
             <div id="info-plan-controls" class="task-plan-actions" hidden>
@@ -118,9 +120,10 @@
                 <span>I consent to sending field labels and vault variable names/descriptions to the configured model.</span>
               </label>
               <button id="info-plan" class="primary" type="button">2. Ask Agent to map fields</button>
+              <button id="info-plan-local" type="button">Map locally / ask me · No API</button>
             </div>
           </div>
-          <dialog id="info-dialog" class="approval-card info-dialog">
+          <dialog id="info-dialog" class="approval-card info-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-prompt">
             <form id="info-dialog-form" method="dialog">
               <h3 id="dialog-title">Agent requested information</h3>
               <p id="dialog-prompt" class="approval-notice"></p>
@@ -140,8 +143,9 @@
                 </div>
               </div>
               <div class="task-plan-actions dialog-actions">
-                <button id="dialog-provide" class="primary" type="submit">Provide to Agent</button>
+                <button id="dialog-provide" class="primary" type="submit">Use locally &amp; continue</button>
                 <button id="dialog-skip" type="button">Skip this field</button>
+                <button id="dialog-cancel" type="button">Cancel &amp; stop</button>
               </div>
             </form>
           </dialog>
@@ -155,16 +159,26 @@
             <button id="fill" class="primary" type="button" disabled>Approve selected fields &amp; authenticate</button>
             <button id="deny" type="button" disabled>Deny &amp; close website</button>
           </div>
-          <p class="approval-notice">The filled page remains protected until Stop, expiry, lock/disconnect, evidence change, or closure. Approval never replaces Windows Hello. No automatic submission, payment, or model observation.</p>
-        </section>
-        <section class="approval-card" aria-labelledby="preview-heading">
-          <div class="preview-heading"><h2 id="preview-heading">Live protected website</h2><span id="frame-status">Waiting for inspection</span></div>
-          <p class="approval-notice">Read-only owner preview. Dashed boxes mark requesting text; solid boxes mark fields. Matching numbers connect each pair. Controls and embedded frames are masked outside the website; these pixels never go to AI.</p>
-          <div id="frame-shell"><p id="frame-empty" class="waiting">No website frame yet.</p><div id="canvas" hidden><img id="frame-image" alt="Masked protected website"><div id="annotations"></div></div></div>
+          <p class="approval-notice">Approval never exposes values to the model. Local fills require Windows Hello; hosted fills use your authenticated session. Hosted website buttons require a separate permission popup for each click.</p>
         </section>
       </section>
+      <section class="approval-card website-preview" aria-labelledby="preview-heading">
+          <div class="preview-heading"><h2 id="preview-heading">Live protected website</h2><span id="frame-status">Waiting for inspection</span></div>
+          <p class="approval-notice">Read-only owner preview. Dashed boxes mark requesting text; solid boxes mark fields. Matching numbers connect each pair. Controls and embedded frames are masked outside the website; these pixels never go to AI.</p>
+          <section id="website-action-panel" hidden aria-labelledby="website-action-heading">
+            <h3 id="website-action-heading">Website buttons · Separate approval required</h3>
+            <p class="approval-notice">A button may submit data, navigate, purchase, or delete. Requesting a click does not execute it; review the permission popup first.</p>
+            <div id="website-actions" class="task-plan-actions"></div>
+          </section>
+          <div id="frame-shell"><p id="frame-empty" class="waiting">No website frame yet.</p><div id="canvas" hidden><img id="frame-image" alt="Masked protected website"><div id="annotations"></div></div></div>
+        </section>
     </div>
-    <p class="approval-notice">Authorization events use the existing metadata-minimal local journal; URLs, record IDs, values, and card data are not included. Run <code>bun run preview</code> for read-only audit history and the synthetic demonstration.</p>
+    <p class="approval-notice">Authorization events use the metadata-minimal journal; URLs, record IDs, values, and card data are not included. No autonomous submission: hosted button clicks require a distinct explicit approval.</p>
+    <dialog id="permission-dialog" class="approval-card info-dialog" aria-labelledby="permission-title" aria-describedby="permission-body">
+      <h2 id="permission-title">Permission required</h2>
+      <p id="permission-body" class="approval-notice"></p>
+      <div class="task-plan-actions dialog-actions"><button id="permission-deny" type="button" autofocus>Deny</button><button id="permission-approve" class="primary" type="button">Approve once</button><button id="permission-stop" type="button">Stop website</button></div>
+    </dialog>
   </main>
 </body>
 </html>

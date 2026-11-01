@@ -1,11 +1,16 @@
 import { TaskPlanner } from '../src/task-planner';
 import { openPreviewDemo } from './preview';
 import { openAutofillApp } from '../src/autofill-owner';
+import { runHosted } from './run-hosted';
 
 try {
   const args = process.argv.slice(2);
-  if (args.length > 1 || args.length === 1 && args[0] !== '--synthetic') throw new Error('INVALID_START_ARGUMENT');
-  if (args[0] === '--synthetic') {
+  if (args.length > 1 || (args.length === 1 && args[0] !== '--synthetic' && args[0] !== '--hosted')) {
+    throw new Error('INVALID_START_ARGUMENT');
+  }
+  if (args[0] === '--hosted') {
+    await runHosted([]);
+  } else if (args[0] === '--synthetic') {
     const app = await openPreviewDemo({ planner: TaskPlanner.fromEnvironment() });
     console.log('Auto-Mate synthetic prototype opened. Normal vaults and real websites are not used.');
     console.log('Metadata-safe audit journal: ' + app.auditPath);
@@ -21,9 +26,14 @@ try {
   }
 } catch (error) {
   const code = error instanceof Error ? error.message : '';
-  console.error(code === 'PLANNER_CONFIGURATION'
-    ? 'Planner configuration rejected. Check the synthetic model-planning settings in README.md.'
-    : code === 'INVALID_START_ARGUMENT' ? 'Usage: bun start [--synthetic]'
-    : 'Auto-Mate could not start or close safely. Check Windows session protection, Chromium, and local audit/vault access.');
+  if (code === 'PLANNER_CONFIGURATION') {
+    console.error('Planner configuration rejected. Check the synthetic model-planning settings in README.md.');
+  } else if (code === 'INVALID_START_ARGUMENT') {
+    console.error('Usage: bun start [--synthetic | --hosted]');
+  } else if (process.argv.slice(2)[0] === '--hosted') {
+    console.error('Auto-Mate hosted service could not start or close safely: ' + (error instanceof Error ? error.message : String(error)));
+  } else {
+    console.error('Auto-Mate could not start or close safely. Check Windows session protection, Chromium, and local audit/vault access.');
+  }
   process.exitCode = 1;
 }

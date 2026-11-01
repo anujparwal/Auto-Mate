@@ -283,12 +283,15 @@ export class WindowsInformationVault implements InformationVault {
         fieldKey: binding.fieldKey,
         expectedKind: binding.kind,
         expectedScope: binding.scope,
+        expectedName: binding.name,
+        expectedDescription: binding.description,
       },
     );
 
     if (result.action !== 'resolve-variable' || typeof result.value !== 'string') {
       throw new PolicyError('VAULT_PROTOCOL_FAILED');
     }
+    if (this.#bindings.get(id) !== binding) throw new PolicyError('UNKNOWN_VARIABLE');
 
     return result.value;
   }

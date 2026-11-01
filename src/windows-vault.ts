@@ -315,4 +315,3 @@ export class WindowsAutofillVault implements AutofillVault {
   }
 }
 
-export { WindowsInformationVault } from './information-vault';

@@ -1201,7 +1201,7 @@ function Invoke-Broker {
             }
 
             $vaultFilePath = Resolve-VaultFilePath -PathInput $CustomVaultPath -Synthetic:$Synthetic
-            $vaultData = Load-VaultData -FilePath $vaultFilePath -AllowMissing -Synthetic:$Synthetic
+            $vaultData = Invoke-WithVaultMutex { Load-VaultData -FilePath $vaultFilePath -AllowMissing -Synthetic:$Synthetic }
 
             $catalogItems = New-Object System.Collections.ArrayList
             if ($null -ne $vaultData -and $null -ne $vaultData.records) {
@@ -1284,11 +1284,20 @@ function Invoke-Broker {
                             }) | Out-Null
                         }
                     } else {
-                        # Legacy password record
+                        # Legacy login: username is the record ID, password is the stored secret.
                         $catalogItems.Add([ordered]@{
                             recordId    = [string]$r.recordId
                             origin      = [string]$r.origin
-                            fieldKey    = ""
+                            fieldKey    = "username"
+                            name        = "Username ($($r.recordId))"
+                            description = "Username for $($r.origin) ($($r.recordId))"
+                            kind        = "username"
+                            scope       = "site"
+                        }) | Out-Null
+                        $catalogItems.Add([ordered]@{
+                            recordId    = [string]$r.recordId
+                            origin      = [string]$r.origin
+                            fieldKey    = "password"
                             name        = "Password ($($r.recordId))"
                             description = "Stored password for $($r.origin) ($($r.recordId))"
                             kind        = "password"
@@ -1496,6 +1505,9 @@ function Invoke-Broker {
                     if ($parsed.scope -ne $expectedScope) {
                         throw "Variable scope mismatch: stored '$($parsed.scope)', expected '$expectedScope'."
                     }
+                    if ([string]$parsed.name -cne [string]$req.expectedName -or [string]$parsed.description -cne [string]$req.expectedDescription) {
+                        throw "Variable metadata changed after catalog review."
+                    }
                     $val = [string]$parsed.value
                 } elseif ($parsed.PSObject.Properties["kind"] -and $parsed.kind -eq "login") {
                     if ($expectedScope -ne "site" -or $sourceOrigin -ne $targetOrigin) {
@@ -1533,14 +1545,17 @@ function Invoke-Broker {
                     throw "Unsupported record payload for variable resolution."
                 }
             } else {
-                # Legacy generated password string
+                # Legacy login: resolve only the explicitly cataloged field.
                 if ($expectedScope -ne "site" -or $sourceOrigin -ne $targetOrigin) {
                     throw "Cross-origin denied for legacy record."
                 }
-                if ($expectedKind -ne "password") {
-                    throw "Kind mismatch for legacy password record."
+                if ($fieldKey -eq "username" -and $expectedKind -eq "username") {
+                    $val = [string]$recordId
+                } elseif ($fieldKey -eq "password" -and $expectedKind -eq "password") {
+                    $val = [string]$rawSecret
+                } else {
+                    throw "Kind or field mismatch for legacy login record."
                 }
-                $val = [string]$rawSecret
             }
 
             if ($null -eq $val) {
