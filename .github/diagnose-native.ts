@@ -12,7 +12,11 @@ try {
   if (!source.includes(marker)) throw new Error('Diagnostic insertion point unavailable');
   // Throwaway copy, fixed synthetic payload only. Never changes the shipped broker's diagnostics.
   const diagnosticScript = join(directory, 'diagnostic-vault.ps1');
-  await writeFile(diagnosticScript, source.replace(marker, '    [System.Console]::Error.WriteLine($_.Exception.ToString())\n' + marker));
+  const aclFailure = '        throw "Failed to enforce restrictive ACL on vault storage. Refusing to operate on insecure storage."';
+  const diagnosticSource = source
+    .replace(marker, '    [System.Console]::Error.WriteLine($_.Exception.ToString())\n' + marker)
+    .replace(aclFailure, '        [System.Console]::Error.WriteLine($_.Exception.ToString())\n' + aclFailure);
+  await writeFile(diagnosticScript, diagnosticSource);
   const environment = { ...process.env, TEMP: dirname(SYNTHETIC_VAULT_ROOT), TMP: dirname(SYNTHETIC_VAULT_ROOT) };
   const probe = Bun.spawn(['powershell.exe', '-NoProfile', '-Command', '[pscustomobject]@{NativeTemp=[IO.Path]::GetTempPath();TEMP=$env:TEMP;TMP=$env:TMP}|ConvertTo-Json -Compress'], { env: environment, stdout: 'pipe', stderr: 'pipe' });
   console.log(await new Response(probe.stdout).text());
