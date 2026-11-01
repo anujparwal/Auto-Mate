@@ -14,11 +14,11 @@ Supported platform: **Windows 11 x64, build 22000+**, with the included Windows 
 
 ### From the private preview release
 
-1. Sign in with repository access and open [v0.1.0-preview.1](https://github.com/anujparwal/Auto-Mate/releases/tag/v0.1.0-preview.1). The public homepage does not offer a public app download.
-2. Download `Auto-Mate-0.1.0-preview.1-windows-x64.zip` and `SHA256SUMS.txt` from that release.
-3. Run `Get-FileHash .\Auto-Mate-0.1.0-preview.1-windows-x64.zip -Algorithm SHA256` and compare the complete hash with the matching checksum entry. Integrity is not publisher identity: this is an **unsigned private preview**, not a signed production installer.
+1. Sign in with repository access and open [v0.1.0-preview.2](https://github.com/anujparwal/Auto-Mate/releases/tag/v0.1.0-preview.2). The public homepage does not offer a public app download.
+2. Download `Auto-Mate-0.1.0-preview.2-windows-x64.zip` and `SHA256SUMS.txt` from that release.
+3. Run `Get-FileHash .\Auto-Mate-0.1.0-preview.2-windows-x64.zip -Algorithm SHA256` and compare the complete hash with the matching checksum entry. Integrity is not publisher identity: this is an **unsigned private preview**, not a signed production installer.
 4. Extract the complete ZIP into a **short path** in a folder you control, for example `%LOCALAPPDATA%\AM-preview`. Windows PowerShell's ZIP extraction can fail when a resulting path exceeds its legacy path limit. Keep `Auto-Mate.exe` and its bundled files together; do not run it from inside the archive.
-5. In the extracted `Auto-Mate-0.1.0-preview.1-windows-x64` folder, run the bundled check:
+5. In the extracted `Auto-Mate-0.1.0-preview.2-windows-x64` folder, run the bundled check:
 
    ```powershell
    $check = Start-Process -FilePath .\Auto-Mate.exe -ArgumentList '--check' -Wait -PassThru
@@ -108,8 +108,23 @@ Click **Public card test** to select `https://autofill.me/form/credit-card-simpl
 | Close owner window, lock Windows, or disconnect | Requests protected-page closure and removes authority. Unlock/reconnect must not revive the old task. Actual lock/disconnect behavior still requires hardware testing. |
 
 Inspect afresh for a new disclosure. Revocation cannot erase data already sent to website scripts or undo an already-started operation. Browser closure is cooperative, not a hard real-time guarantee.
+## 9. Agent-assisted form inspection and missing-information dialogs
 
-## 9. Optional synthetic and supplied-API workflows
+Auto-Mate supports general form inspection where the agent assists in mapping vault variables to form fields:
+
+1. In the **Inspect a website** card, select record type **All form fields (Agent assisted)**.
+2. Enter an HTTPS URL (e.g. a signup or profile form) and click **Inspect website**. Supported visible inputs (text, email, tel, url, username, password, select, textarea, date, number) are discovered with strict label evidence.
+3. Click **1. Authenticate & list vault variables**. After native OS verification, the agent receives an allowlisted catalog containing all variable **names and descriptions** across your vault. **Secret values and ciphertexts are NEVER exposed to the agent.**
+4. Click **2. Ask Agent to map fields**. The agent matches compatible variables to discovered fields.
+5. **Missing Information Dialog**: Whenever the agent needs information that is not available in the vault (such as your Name on the first run, or a new username created for a specific website), a modal dialog box automatically appears:
+   - Enter the requested value.
+   - Optionally check **Save this to vault for future use**, specifying whether it should be saved as a **Shared profile** variable (reusable across websites for general profile data like your name) or a **Site-bound** variable (restricted to the current origin).
+   - Click **Provide to Agent**, or click **Skip this field** if you do not wish to provide it.
+6. Review the mapping badges on each field. Check only the fields you explicitly approve, choose a lifetime, and click **Approve selected fields & fill**.
+7. The app enters the values into the receiving fields. **It never clicks submit or creates an account autonomously.** Review the protected browser window yourself.
+
+
+## 10. Optional synthetic and supplied-API workflows
 
 ```powershell
 bun start --synthetic
@@ -121,7 +136,7 @@ The user supplies the **OpenAI-compatible API**. Follow [docs/model-api.md](docs
 
 Cloud consent is required. Only the typed task instruction and fixed system prompt are sent; never enter secrets. The API does not operate the real-site autofill path, and model selection never replaces field approval or Hello. Live-provider verification waits for the actual connection details.
 
-## 10. Run the automated checks
+## 11. Run the automated checks
 
 From the project root:
 
@@ -138,7 +153,7 @@ The native smoke must report `Unicode secrets survive detached write and UTF-8-c
 
 For a manual acceptance matrix, use [README.md](README.md#website-acceptance-checklist). Also check the owner UI at about 390 px width: no horizontal page overflow, no focus/draft loss from preview refresh, and no stale frame after Stop.
 
-## 11. Build and publish the application separately from the homepage
+## 12. Build and publish the application separately from the homepage
 
 The application repository and its first release remain **private**. Build the application-only portable archive on Windows:
 
@@ -147,7 +162,7 @@ bun run build:app
 bun run check:app
 ```
 
-`dist/app/` contains `Auto-Mate-0.1.0-preview.1-windows-x64.zip`, `SHA256SUMS.txt`, and release metadata. Publish the application ZIP and checksum as a **prerelease** of the reviewed, tested source commit. Do not upload the former source-site ZIP, homepage source, demo film, vault data, `.env` files, keys, or maintainer conversation memory. The archive includes required runtime components and third-party license notices.
+`dist/app/` contains `Auto-Mate-0.1.0-preview.2-windows-x64.zip`, `SHA256SUMS.txt`, and release metadata. Publish the application ZIP and checksum as a **prerelease** of the reviewed, tested source commit. Do not upload the former source-site ZIP, homepage source, demo film, vault data, `.env` files, keys, or maintainer conversation memory. The archive includes required runtime components and third-party license notices.
 
 `check:app` validates the checksum and application-only archive boundary, extracts into a temporary path containing spaces and Unicode, and runs the actual bundled `Auto-Mate.exe --check` with global Bun/Node excluded from `PATH`. It exercises the packaged DPAPI/Chromium path, not just the source checkout. It does not prove successful Hello authentication, signing, or a clean-machine installation.
 
@@ -155,7 +170,7 @@ The public homepage and non-interactive simulated film live only in [Auto-Mate-h
 
 The first release is an unsigned, test-data-only private preview—not production approval. Successful Hello/session tests, clean-machine installation, repeatable browser reliability, independent security review, signing, and a recovery strategy remain gates before recommending private credentials or public application distribution.
 
-## 12. Troubleshooting and data handling
+## 13. Troubleshooting and data handling
 
 - **Authentication refusal:** configure Windows Hello and verify an interactive signed-in desktop. Stop and inspect again after resolving it. Do not turn on synthetic mode for real domains.
 - **No supported fields:** verify record type, full visibility, and explicit labels; an unsupported site is not permission to weaken evidence checks.

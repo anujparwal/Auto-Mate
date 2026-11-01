@@ -4,7 +4,7 @@ import { httpsOrigin } from './policy';
 import type { Annotation, Association, FieldRequest, OwnerFrame, Rect, VerifiedField } from './preview-contract';
 
 interface DomPair {
-  field: HTMLInputElement | HTMLSelectElement;
+  field: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
   source: HTMLElement;
   request: FieldRequest;
   expected?: { association: Association; sourceText: string };
@@ -38,8 +38,10 @@ function inspectDocument({ origin, pairs }: { origin: string; pairs: readonly Do
     const { field, source, request } = pair;
     const input = field instanceof HTMLInputElement;
     const select = field instanceof HTMLSelectElement;
-    if ((!input && !select) || !(source instanceof HTMLElement) || field.disabled ||
-        (input && (field.readOnly || ['hidden', 'submit', 'button', 'reset', 'image', 'checkbox', 'radio', 'file'].includes(field.type))) ||
+    const textarea = field instanceof HTMLTextAreaElement;
+    if ((!input && !select && !textarea) || !(source instanceof HTMLElement) || field.disabled ||
+        ((input || textarea) && field.readOnly) ||
+        (input && ['hidden', 'submit', 'button', 'reset', 'image', 'checkbox', 'radio', 'file'].includes(field.type)) ||
         (select && field.multiple) ||
         (['registration-password', 'autofill:password'].includes(request.credential) && (!input || field.type !== 'password')))
       throw new Error('EVIDENCE_INVALID');
@@ -110,7 +112,11 @@ function inspectDocument({ origin, pairs }: { origin: string; pairs: readonly Do
       if (options.length !== 1 || options[0]!.disabled || options[0]!.parentElement instanceof HTMLOptGroupElement &&
           options[0]!.parentElement.disabled) throw new Error('EVIDENCE_INVALID');
     }
-    const prototype = pair.field instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    const prototype = pair.field instanceof HTMLSelectElement
+      ? HTMLSelectElement.prototype
+      : pair.field instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
     if (!setter) throw new Error('EVIDENCE_INVALID');
     setter.call(pair.field, pair.value);
@@ -140,7 +146,7 @@ export async function verifyFieldRequests(page: Page, origin: string, requests: 
       handles.push(...sources);
       if (sources.length !== 1 || !sources[0]) throw new Error('EVIDENCE_INVALID');
       // Runtime node-type validation occurs in inspectDocument before these typed handles are used.
-      const field = matches[0] as ElementHandle<HTMLInputElement | HTMLSelectElement>;
+      const field = matches[0] as ElementHandle<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>;
       const source = sources[0] as ElementHandle<HTMLElement>;
       pairs.push({ field, source, request });
     }
@@ -165,6 +171,16 @@ export async function fillVerifiedField(page: Page, origin: string, field: Verif
       expected: { association: field.association, sourceText: field.sourceText }, value,
     }] });
   } catch { throw new Error('FILL_VERIFIED_FIELD_FAILED'); }
+}
+
+/** Re-verifies DOM evidence for a previously verified field without mutating it. */
+export async function verifyDomField(page: Page, origin: string, field: VerifiedField): Promise<void> {
+  try {
+    await page.evaluate(inspectDocument, { origin: httpsOrigin(origin), pairs: [{
+      field: field.field, source: field.source, request: field.request,
+      expected: { association: field.association, sourceText: field.sourceText },
+    }] });
+  } catch { throw new Error('VERIFICATION_FAILED'); }
 }
 
 const CONTROL_LOCATOR_SELECTOR = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';

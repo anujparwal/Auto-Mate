@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { TaskPlanner, type PlannerConfig } from '../src/task-planner';
+import { TaskPlanner } from '../src/task-planner';
+import type { PlannerConfig } from '../src/model-client';
 
 const completion = (content: string) => Response.json({ choices: [{ message: { content } }] });
 async function withProvider(response: () => Response | Promise<Response>, check: (planner: TaskPlanner) => Promise<void>) {

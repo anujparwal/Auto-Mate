@@ -21,8 +21,8 @@ using System.Windows.Forms;
 [assembly: AssemblyCulture("")]
 [assembly: ComVisible(false)]
 [assembly: AssemblyVersion("0.1.0.1")]
-[assembly: AssemblyFileVersion("0.1.0.1")]
-[assembly: AssemblyInformationalVersion("0.1.0-preview.1")]
+[assembly: AssemblyFileVersion("0.1.0.2")]
+[assembly: AssemblyInformationalVersion("0.1.0-preview.2")]
 
 namespace AutoMate.Platforms.Windows.Launcher {
     /// <summary>
@@ -121,7 +121,7 @@ namespace AutoMate.Platforms.Windows.Launcher {
     }
 
     public static class Program {
-        private const string VersionString = "0.1.0-preview.1";
+        private const string VersionString = "0.1.0-preview.2";
         private const string AppTitle = "Auto-Mate";
 
         [DllImport("kernel32.dll", SetLastError = true)]
