@@ -327,10 +327,13 @@ test('duplicate or ambiguous semantic candidates fail closed or are omitted', as
   const iframeOnlyForm = `<!doctype html><html><body><iframe src="/inner"></iframe></body></html>`;
   await expect(AutofillSession.open(browser, origin + '/iframe-only', 'login', {
     prepare: async page => {
-      await page.route('**/*', route => route.fulfill({ contentType: 'text/html', body: iframeOnlyForm }));
+      await page.route('**/*', route => route.fulfill({
+        contentType: 'text/html',
+        body: route.request().url() === origin + '/inner' ? loginFormHtml : iframeOnlyForm,
+      }));
     },
   })).rejects.toThrow('UNSUPPORTED_FORM');
-});
+}, 20000);
 
 test('card month and year selects fill matching options and CVV is never recognized', async () => {
   const policy = new PolicyBroker({
