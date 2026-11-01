@@ -1,11 +1,12 @@
 {
   "name": "auto-mate",
-  "version": "0.1.0",
+  "version": "0.1.0-preview.1",
   "private": true,
   "type": "module",
   "scripts": {
     "setup": "powershell.exe -NoProfile -File tools/setup-windows.ps1",
-    "build:site": "powershell.exe -NoProfile -File tools/build-site.ps1",
+    "build:app": "powershell.exe -NoProfile -File tools/build-app.ps1",
+    "check:app": "powershell.exe -NoProfile -File tools/check-app.ps1",
     "start": "bun run tools/start.ts",
     "test": "bun test",
     "smoke": "bun run tools/smoke.ts",

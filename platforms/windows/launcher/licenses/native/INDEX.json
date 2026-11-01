@@ -1,0 +1,578 @@
+{
+  "manifest_name": "Auto-Mate Native Image Libraries License & Redistribution Materials Index",
+  "schema_version": "1.0.0",
+  "target_directory": "platforms/windows/launcher/licenses/native",
+  "host_package": "@img/sharp-win32-x64",
+  "host_version": "0.35.5",
+  "sharp_libvips_recipe": {
+    "repository": "https://github.com/lovell/sharp-libvips",
+    "release_tag": "v1.3.4",
+    "commit_sha": "ebb95f8add54eee8bed840e3fb587e4cbec857d7",
+    "release_date": "2026-09-27",
+    "libvips_version": "8.18.7",
+    "prebuilt_mxe_archive": "https://github.com/libvips/build-win64-mxe/releases/download/v8.18.7/vips-dev-x64-web-8.18.7-static.zip"
+  },
+  "native_dependencies_count": 29,
+  "total_files_collected": 62,
+  "unresolved_materials": [],
+  "files": [
+    {
+      "file": "aom/AUTHORS",
+      "component": "aom",
+      "version_basis": "3.15.1",
+      "origin_url": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.1/AUTHORS?format=TEXT",
+      "sha256": "c31b80ca48fde06ca03aef2f3dec15413fe0c2661fe6b56e86ccd69dbc6f9a1d",
+      "bytes": 13178,
+      "license_description": "AOMedia Project Author Listing"
+    },
+    {
+      "file": "aom/LICENSE",
+      "component": "aom",
+      "version_basis": "3.15.1",
+      "origin_url": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.1/LICENSE?format=TEXT",
+      "sha256": "4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2",
+      "bytes": 1316,
+      "license_description": "BSD 2-Clause License (Copyright 2016, Alliance for Open Media)"
+    },
+    {
+      "file": "aom/PATENTS",
+      "component": "aom",
+      "version_basis": "3.15.1",
+      "origin_url": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.1/PATENTS?format=TEXT",
+      "sha256": "661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61",
+      "bytes": 5701,
+      "license_description": "Alliance for Open Media Patent License 1.0"
+    },
+    {
+      "file": "cairo/AUTHORS",
+      "component": "cairo",
+      "version_basis": "1.18.6",
+      "origin_url": "https://gitlab.freedesktop.org/cairo/cairo/-/raw/1.18.6/AUTHORS",
+      "sha256": "7118b55c2d911781622ecb281d9e11fd7eeb5f46c8925e6d740f96f89e79a8fe",
+      "bytes": 8148,
+      "license_description": "Cairo authors and contributors listing"
+    },
+    {
+      "file": "cairo/COPYING",
+      "component": "cairo",
+      "version_basis": "1.18.6",
+      "origin_url": "https://gitlab.freedesktop.org/cairo/cairo/-/raw/1.18.6/COPYING",
+      "sha256": "67228a9f7c5f9b67c58f556f1be178f62da4d9e2e6285318d8c74d567255abdf",
+      "bytes": 1576,
+      "license_description": "Cairo dual licensing choice notice (LGPL 2.1 or MPL 1.1)"
+    },
+    {
+      "file": "cairo/COPYING-LGPL-2.1",
+      "component": "cairo",
+      "version_basis": "1.18.6",
+      "origin_url": "https://gitlab.freedesktop.org/cairo/cairo/-/raw/1.18.6/COPYING-LGPL-2.1",
+      "sha256": "9e9e8608c4cdda51a78cc3a385f4ec9a2e4c96d5ecad74ac8bca5fca3e563b7d",
+      "bytes": 26533,
+      "license_description": "GNU Lesser General Public License Version 2.1 verbatim text"
+    },
+    {
+      "file": "cairo/COPYING-MPL-1.1",
+      "component": "cairo",
+      "version_basis": "1.18.6",
+      "origin_url": "https://gitlab.freedesktop.org/cairo/cairo/-/raw/1.18.6/COPYING-MPL-1.1",
+      "sha256": "53692a2ed6c6a2c6ec9b32dd0b820dfae91e0a1fcdf625ca9ed0bdf8705fcc4f",
+      "bytes": 25755,
+      "license_description": "Mozilla Public License Version 1.1 verbatim text"
+    },
+    {
+      "file": "cgif/AUTHORS",
+      "component": "cgif",
+      "version_basis": "0.5.4",
+      "origin_url": "https://raw.githubusercontent.com/dloebl/cgif/v0.5.4/AUTHORS",
+      "sha256": "76ed8a61cb7e254cab424641ebbb4069d08bf820dfe00f6f7ab5485057ca003d",
+      "bytes": 193,
+      "license_description": "CGIF author and contributor acknowledgements"
+    },
+    {
+      "file": "cgif/LICENSE",
+      "component": "cgif",
+      "version_basis": "0.5.4",
+      "origin_url": "https://raw.githubusercontent.com/dloebl/cgif/v0.5.4/LICENSE",
+      "sha256": "7264dede477abab4ac3fe8236beb8153845c04ccd33b18f281085087e219fc6d",
+      "bytes": 1099,
+      "license_description": "MIT License (Copyright 2021-2023 Daniel Löbl)"
+    },
+    {
+      "file": "expat/AUTHORS",
+      "component": "expat",
+      "version_basis": "2.8.5",
+      "origin_url": "https://raw.githubusercontent.com/libexpat/libexpat/R_2_8_5/expat/AUTHORS",
+      "sha256": "59f14371c6b75912cfebb46e6247ee5146766e803a0365b124e5d3011e7d0877",
+      "bytes": 142,
+      "license_description": "Expat maintainers listing"
+    },
+    {
+      "file": "expat/COPYING",
+      "component": "expat",
+      "version_basis": "2.8.5",
+      "origin_url": "https://raw.githubusercontent.com/libexpat/libexpat/R_2_8_5/expat/COPYING",
+      "sha256": "31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87",
+      "bytes": 1144,
+      "license_description": "MIT License (Copyright 1998-2000 Thai Open Source Software Center & Clark Cooper, Copyright 2001-2025 Expat maintainers)"
+    },
+    {
+      "file": "fontconfig/AUTHORS",
+      "component": "fontconfig",
+      "version_basis": "2.18.3",
+      "origin_url": "https://gitlab.freedesktop.org/fontconfig/fontconfig/-/raw/2.18.3/AUTHORS",
+      "sha256": "db6d73a160bb2de10268f88ef60aae91771fefdeee4992b791c76ce6592a4a4b",
+      "bytes": 62,
+      "license_description": "Fontconfig authors listing"
+    },
+    {
+      "file": "fontconfig/COPYING",
+      "component": "fontconfig",
+      "version_basis": "2.18.3",
+      "origin_url": "https://gitlab.freedesktop.org/fontconfig/fontconfig/-/raw/2.18.3/COPYING",
+      "sha256": "51a51aa9823704fd90bccc616cdd17ebabb5b2b3e9cbde886ca02c7002288067",
+      "bytes": 8616,
+      "license_description": "Fontconfig BSD-like license with full copyright holders (Keith Packard, Red Hat Inc, Google Inc, etc.)"
+    },
+    {
+      "file": "freetype/FTL.TXT",
+      "component": "freetype",
+      "version_basis": "2.14.3",
+      "origin_url": "https://raw.githubusercontent.com/freetype/freetype/VER-2-14-3/docs/FTL.TXT",
+      "sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f",
+      "bytes": 6743,
+      "license_description": "The FreeType Project LICENSE (FTL) verbatim text (BSD-like)"
+    },
+    {
+      "file": "freetype/GPLv2.TXT",
+      "component": "freetype",
+      "version_basis": "2.14.3",
+      "origin_url": "https://raw.githubusercontent.com/freetype/freetype/VER-2-14-3/docs/GPLv2.TXT",
+      "sha256": "c4120c6752c910c299e3bd9cb3a46ff262c268303ca2069b61f92f10a5656c18",
+      "bytes": 17994,
+      "license_description": "GNU General Public License Version 2 verbatim text"
+    },
+    {
+      "file": "freetype/LICENSE.TXT",
+      "component": "freetype",
+      "version_basis": "2.14.3",
+      "origin_url": "https://raw.githubusercontent.com/freetype/freetype/VER-2-14-3/LICENSE.TXT",
+      "sha256": "bd36c8b474855fa294c2ec5c184544478ef3720aad37d65a6296a4f264fd2d3b",
+      "bytes": 2149,
+      "license_description": "The FreeType Project LICENSE overview (dual license choices)"
+    },
+    {
+      "file": "fribidi/AUTHORS",
+      "component": "fribidi",
+      "version_basis": "1.0.17",
+      "origin_url": "https://raw.githubusercontent.com/fribidi/fribidi/v1.0.17/AUTHORS",
+      "sha256": "cb173f55c9514c8f38f4647ac3fedd5f8611358d331e65ab955da931e826861c",
+      "bytes": 1640,
+      "license_description": "FriBidi authors (Behdad Esfahbod, Dov Grobgeld)"
+    },
+    {
+      "file": "fribidi/COPYING",
+      "component": "fribidi",
+      "version_basis": "1.0.17",
+      "origin_url": "https://raw.githubusercontent.com/fribidi/fribidi/v1.0.17/COPYING",
+      "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+      "bytes": 26419,
+      "license_description": "GNU Lesser General Public License Version 2.1 verbatim text"
+    },
+    {
+      "file": "glib/COPYING",
+      "component": "glib",
+      "version_basis": "2.90.0",
+      "origin_url": "https://gitlab.gnome.org/GNOME/glib/-/raw/2.90.0/COPYING",
+      "sha256": "65986a89240f59896ce42a3779bbe5ed486a0bca7df636a8eef030fd2e1a0984",
+      "bytes": 30,
+      "license_description": "GLib COPYING pointer to LICENSES/LGPL-2.1-or-later.txt"
+    },
+    {
+      "file": "glib/LGPL-2.1-or-later.txt",
+      "component": "glib",
+      "version_basis": "2.90.0",
+      "origin_url": "https://gitlab.gnome.org/GNOME/glib/-/raw/2.90.0/LICENSES/LGPL-2.1-or-later.txt",
+      "sha256": "fa6f36630bb1e0c571d34b2bbdf188d08495c9dbf58f28cac112f303fc1f58fb",
+      "bytes": 25967,
+      "license_description": "GNU Lesser General Public License Version 2.1 or later verbatim text from GLib repository"
+    },
+    {
+      "file": "harfbuzz/AUTHORS",
+      "component": "harfbuzz",
+      "version_basis": "14.5.0",
+      "origin_url": "https://raw.githubusercontent.com/harfbuzz/harfbuzz/14.5.0/AUTHORS",
+      "sha256": "19bfe8f5ed100636cd24ab0c90a3f71c21d8b02d9ba00719447a0faab364d49f",
+      "bytes": 201,
+      "license_description": "HarfBuzz primary authors listing"
+    },
+    {
+      "file": "harfbuzz/COPYING",
+      "component": "harfbuzz",
+      "version_basis": "14.5.0",
+      "origin_url": "https://raw.githubusercontent.com/harfbuzz/harfbuzz/14.5.0/COPYING",
+      "sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64",
+      "bytes": 1971,
+      "license_description": "HarfBuzz Old MIT License with full copyright holders (Google, Ebrahim Byagowi, Facebook, Mozilla, etc.)"
+    },
+    {
+      "file": "highway/LICENSE",
+      "component": "highway",
+      "version_basis": "1.4.0",
+      "origin_url": "https://raw.githubusercontent.com/google/highway/1.4.0/LICENSE",
+      "sha256": "e340270d4f64384569a91d546acb5b094d69ce47f0c015db77abb74dc6f815af",
+      "bytes": 20785,
+      "license_description": "Apache License 2.0 / BSD 3-Clause dual license with CC0 notice"
+    },
+    {
+      "file": "lcms/AUTHORS",
+      "component": "lcms",
+      "version_basis": "2.19.1",
+      "origin_url": "https://raw.githubusercontent.com/mm2/Little-CMS/lcms2.19.1/AUTHORS",
+      "sha256": "4fc685b706c3271920643ef8b856a7cfd0b559a86fe2d7075c7c1c5a9c44d663",
+      "bytes": 1016,
+      "license_description": "Little-CMS author, contributors, and acknowledgements listing"
+    },
+    {
+      "file": "lcms/LICENSE",
+      "component": "lcms",
+      "version_basis": "2.19.1",
+      "origin_url": "https://raw.githubusercontent.com/mm2/Little-CMS/lcms2.19.1/LICENSE",
+      "sha256": "6dbd60437f8ef91d8de1f08ad75882547fd4931bfcc3566a0735f28db1484d31",
+      "bytes": 1080,
+      "license_description": "Little-CMS MIT License (Copyright 2023 Marti Maria Saguer)"
+    },
+    {
+      "file": "lcms/LICENSE_iccjpeg",
+      "component": "lcms",
+      "version_basis": "2.19.1",
+      "origin_url": "https://raw.githubusercontent.com/mm2/Little-CMS/lcms2.19.1/utils/jpgicc/LICENSE_iccjpeg",
+      "sha256": "8baac37d14eed89b82ffcb041677dd701164eb5cc0f26e165fe47eb11afa0dca",
+      "bytes": 3234,
+      "license_description": "Special permissive notice for iccjpeg.c"
+    },
+    {
+      "file": "libarchive/COPYING",
+      "component": "libarchive",
+      "version_basis": "3.8.9",
+      "origin_url": "https://raw.githubusercontent.com/libarchive/libarchive/v3.8.9/COPYING",
+      "sha256": "30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229",
+      "bytes": 3089,
+      "license_description": "Detailed copyright and license breakdown by Tim Kientzle & contributors (BSD 2-Clause / BSD 3-Clause / Public Domain)"
+    },
+    {
+      "file": "libexif/AUTHORS",
+      "component": "libexif",
+      "version_basis": "0.6.26",
+      "origin_url": "https://raw.githubusercontent.com/libexif/libexif/v0.6.26/AUTHORS",
+      "sha256": "a19ef6f43014fc57829658087d0c2bf59d97482e015cf553d7a68124603cbc44",
+      "bytes": 240,
+      "license_description": "libexif authors listing"
+    },
+    {
+      "file": "libexif/COPYING",
+      "component": "libexif",
+      "version_basis": "0.6.26",
+      "origin_url": "https://raw.githubusercontent.com/libexif/libexif/v0.6.26/COPYING",
+      "sha256": "36b6d3fa47916943fd5fec313c584784946047ec1337a78b440e5992cb595f89",
+      "bytes": 26434,
+      "license_description": "GNU Lesser General Public License Version 2.1 verbatim text"
+    },
+    {
+      "file": "libffi/LICENSE",
+      "component": "libffi",
+      "version_basis": "3.8.0",
+      "origin_url": "https://raw.githubusercontent.com/libffi/libffi/v3.8.0/LICENSE",
+      "sha256": "17b64dc60f3b6897a60f971e288b973f655c2edcdf08b25f3c3dd5549857881c",
+      "bytes": 1132,
+      "license_description": "libffi MIT-style license (Copyright 1996-2026 Anthony Green, Red Hat Inc. and others)"
+    },
+    {
+      "file": "libffi/LICENSE-BUILDTOOLS",
+      "component": "libffi",
+      "version_basis": "3.8.0",
+      "origin_url": "https://raw.githubusercontent.com/libffi/libffi/v3.8.0/LICENSE-BUILDTOOLS",
+      "sha256": "e67978cd18816c0cb7d29aaaacde7b7447402c2fb321a051698890a8eaedda94",
+      "bytes": 18698,
+      "license_description": "libffi build tools licensing notices (GPLv2+, etc.)"
+    },
+    {
+      "file": "libheif/COPYING",
+      "component": "libheif",
+      "version_basis": "1.23.5",
+      "origin_url": "https://raw.githubusercontent.com/strukturag/libheif/v1.23.5/COPYING",
+      "sha256": "fa81ce652315b013359d6e8e4744335f31a50c7c192907176d3632f78a3b4596",
+      "bytes": 44366,
+      "license_description": "GNU Lesser General Public License Version 3 / MIT dual distribution notice and LGPL-3.0 text"
+    },
+    {
+      "file": "libimagequant/COPYRIGHT",
+      "component": "libimagequant",
+      "version_basis": "2.4.1",
+      "origin_url": "https://raw.githubusercontent.com/lovell/libimagequant/v2.4.1/COPYRIGHT",
+      "sha256": "7391bfbcde4404cefb9849553362c3ab436f929f5cc1abb57071ec045590ee99",
+      "bytes": 1851,
+      "license_description": "BSD 2-Clause (Copyright 1997-2002 Greg Roelofs, 2009-2014 Kornel Lesiński) and MIT-like notice (Copyright 1989, 1991 Jef Poskanzer)"
+    },
+    {
+      "file": "libnsgif/COPYING",
+      "component": "libnsgif",
+      "version_basis": "bundled in libvips 8.18.7",
+      "origin_url": "https://raw.githubusercontent.com/libvips/libvips/v8.18.7/libvips/foreign/libnsgif/COPYING",
+      "sha256": "1469b759cf18e43c6e1b4ff892307d3962cbbb337ac497620d6690a219fad10c",
+      "bytes": 1133,
+      "license_description": "MIT License (Copyright 2004 Richard Wilson, 2008 Sean Fox, 2013-2021 Michael Drake)"
+    },
+    {
+      "file": "libnsgif/README.md",
+      "component": "libnsgif",
+      "version_basis": "bundled in libvips 8.18.7",
+      "origin_url": "https://raw.githubusercontent.com/libvips/libvips/v8.18.7/libvips/foreign/libnsgif/README.md",
+      "sha256": "61ee852f3dc7b79d1e066756498c86fb08965e250e19a6331286dac699c84ab0",
+      "bytes": 423,
+      "license_description": "NetSurf libnsgif bundled integration and maintenance notes"
+    },
+    {
+      "file": "libpng/AUTHORS",
+      "component": "libpng",
+      "version_basis": "1.6.58",
+      "origin_url": "https://raw.githubusercontent.com/pnggroup/libpng/v1.6.58/AUTHORS",
+      "sha256": "0c777e9f2a67bd4058ab91050eb7a56106c92ed038ba8fe5f54c83344f2d93ca",
+      "bytes": 1773,
+      "license_description": "PNG Reference Library contributing authors listing"
+    },
+    {
+      "file": "libpng/LICENSE",
+      "component": "libpng",
+      "version_basis": "1.6.58",
+      "origin_url": "https://raw.githubusercontent.com/pnggroup/libpng/v1.6.58/LICENSE",
+      "sha256": "bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526",
+      "bytes": 5345,
+      "license_description": "PNG Reference Library License version 2 (Copyright 1995-2026 PNG Reference Library Authors)"
+    },
+    {
+      "file": "librsvg/AUTHORS",
+      "component": "librsvg",
+      "version_basis": "2.63.2",
+      "origin_url": "https://gitlab.gnome.org/GNOME/librsvg/-/raw/2.63.2/AUTHORS",
+      "sha256": "14e765b9c1097d93f4b842a6ad23172b530cc00dfe7a5aae1b9afefdca54531b",
+      "bytes": 1798,
+      "license_description": "librsvg maintainers and contributors listing"
+    },
+    {
+      "file": "librsvg/COPYING.LIB",
+      "component": "librsvg",
+      "version_basis": "2.63.2",
+      "origin_url": "https://gitlab.gnome.org/GNOME/librsvg/-/raw/2.63.2/COPYING.LIB",
+      "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
+      "bytes": 26530,
+      "license_description": "GNU Lesser General Public License Version 2.1 verbatim text"
+    },
+    {
+      "file": "libtiff/LICENSE.md",
+      "component": "libtiff",
+      "version_basis": "4.7.2",
+      "origin_url": "https://gitlab.com/libtiff/libtiff/-/raw/v4.7.2/LICENSE.md",
+      "sha256": "0e27c2382d7b8147972bbb746e04059a1152c8d0fda9d03ef1399d1a433c4ade",
+      "bytes": 2416,
+      "license_description": "LibTIFF License (BSD-like, Copyright 1988-1997 Sam Leffler, Silicon Graphics Inc.)"
+    },
+    {
+      "file": "libultrahdr/LICENSE",
+      "component": "libultrahdr",
+      "version_basis": "2.0.2",
+      "origin_url": "https://raw.githubusercontent.com/google/libultrahdr/v2.0.2/LICENSE",
+      "sha256": "c9247b5cb07866938643cc238292434e6f2af8642e1fce10771c0e4cc7909316",
+      "bytes": 12566,
+      "license_description": "Dual MIT License (Copyright 2022 The Android Open Source Project) and Apache License 2.0"
+    },
+    {
+      "file": "libultrahdr/NOTICE",
+      "component": "libultrahdr",
+      "version_basis": "2.0.2",
+      "origin_url": "https://raw.githubusercontent.com/google/libultrahdr/v2.0.2/adobe-hdr-gain-map-license/NOTICE",
+      "sha256": "746d8c9c414b335bb7c9615918a15a6489a4dcc1c5c3aac2bda410d1072c332a",
+      "bytes": 66,
+      "license_description": "Adobe Gain Map Technology License Notice"
+    },
+    {
+      "file": "libvips/LICENSE",
+      "component": "libvips",
+      "version_basis": "8.18.7",
+      "origin_url": "https://raw.githubusercontent.com/libvips/libvips/v8.18.7/LICENSE",
+      "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
+      "bytes": 26530,
+      "license_description": "GNU Lesser General Public License Version 2.1 verbatim text"
+    },
+    {
+      "file": "libwebp/AUTHORS",
+      "component": "libwebp",
+      "version_basis": "1.6.0",
+      "origin_url": "https://raw.githubusercontent.com/webmproject/libwebp/v1.6.0/AUTHORS",
+      "sha256": "f251be89fd442bd9d701360730aea163cc8e2076ff03528f59267dc2c4f8b60a",
+      "bytes": 3279,
+      "license_description": "WebP authors and contributors listing"
+    },
+    {
+      "file": "libwebp/COPYING",
+      "component": "libwebp",
+      "version_basis": "1.6.0",
+      "origin_url": "https://raw.githubusercontent.com/webmproject/libwebp/v1.6.0/COPYING",
+      "sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf",
+      "bytes": 1496,
+      "license_description": "New BSD 3-Clause License (Copyright 2010 Google Inc.)"
+    },
+    {
+      "file": "libwebp/PATENTS",
+      "component": "libwebp",
+      "version_basis": "1.6.0",
+      "origin_url": "https://raw.githubusercontent.com/webmproject/libwebp/v1.6.0/PATENTS",
+      "sha256": "cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c",
+      "bytes": 1436,
+      "license_description": "WebP Additional IP Rights Grant (Patents) by Google Inc."
+    },
+    {
+      "file": "libxml2/Copyright",
+      "component": "libxml2",
+      "version_basis": "2.15.4",
+      "origin_url": "https://gitlab.gnome.org/GNOME/libxml2/-/raw/v2.15.4/Copyright",
+      "sha256": "5d4873884a890122a4b9b20ad56ac6f7da1d796a5bfcf04a427970ac96217626",
+      "bytes": 1314,
+      "license_description": "MIT License with Copyright 1998-2012 Daniel Veillard and The Libxml2 Contributors"
+    },
+    {
+      "file": "mozjpeg/LICENSE.md",
+      "component": "mozjpeg",
+      "version_basis": "0826579",
+      "origin_url": "https://raw.githubusercontent.com/mozilla/mozjpeg/0826579/LICENSE.md",
+      "sha256": "96f5b328adbb78eeaaec6980d73fd558cb1e4d62560ed615646bc3cf5e532430",
+      "bytes": 5620,
+      "license_description": "libjpeg-turbo combined BSD 3-Clause, IJG, and zlib license notice"
+    },
+    {
+      "file": "mozjpeg/README.ijg",
+      "component": "mozjpeg",
+      "version_basis": "0826579",
+      "origin_url": "https://raw.githubusercontent.com/mozilla/mozjpeg/0826579/README.ijg",
+      "sha256": "f4a85f8677ca4e41b185c0a9f7c31a30ddb9ce43c561483ee92ef12db37c2a10",
+      "bytes": 12715,
+      "license_description": "The Independent JPEG Group (IJG) License verbatim text"
+    },
+    {
+      "file": "pango/COPYING",
+      "component": "pango",
+      "version_basis": "1.58.2",
+      "origin_url": "https://gitlab.gnome.org/GNOME/pango/-/raw/1.58.2/COPYING",
+      "sha256": "d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5",
+      "bytes": 25292,
+      "license_description": "GNU Library General Public License Version 2 verbatim text"
+    },
+    {
+      "file": "pango/THANKS",
+      "component": "pango",
+      "version_basis": "1.58.2",
+      "origin_url": "https://gitlab.gnome.org/GNOME/pango/-/raw/1.58.2/THANKS",
+      "sha256": "2672b381a7af206dc7690c18a0e49a1a4fb6e7b9c258881c1b4a219faba4905a",
+      "bytes": 403,
+      "license_description": "Pango contributors and acknowledgements listing"
+    },
+    {
+      "file": "pixman/COPYING",
+      "component": "pixman",
+      "version_basis": "0.46.4",
+      "origin_url": "https://gitlab.freedesktop.org/pixman/pixman/-/raw/pixman-0.46.4/COPYING",
+      "sha256": "fac9270f0987b96ff4533fca3548c633e02083cbba4a0172a3b149b2e4019793",
+      "bytes": 2087,
+      "license_description": "MIT License with comprehensive historical copyright attribution (The Open Group, Digital Equipment, Keith Packard, Red Hat Inc., etc.)"
+    },
+    {
+      "file": "proxy-libintl/COPYING",
+      "component": "proxy-libintl",
+      "version_basis": "0.5",
+      "origin_url": "https://raw.githubusercontent.com/frida/proxy-libintl/0.5/COPYING",
+      "sha256": "d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5",
+      "bytes": 25292,
+      "license_description": "GNU Library General Public License Version 2 verbatim text"
+    },
+    {
+      "file": "proxy-libintl/README.md",
+      "component": "proxy-libintl",
+      "version_basis": "0.5",
+      "origin_url": "https://raw.githubusercontent.com/frida/proxy-libintl/0.5/README.md",
+      "sha256": "a0cea22d295c8e9d020f6a8b32936443233b685d314e5ded96296cd92bd421cd",
+      "bytes": 2039,
+      "license_description": "proxy-libintl README and copyright statement by Tor Lillqvist <tml@iki.fi>"
+    },
+    {
+      "file": "sharp-libvips/CORRESPONDING-SOURCE.md",
+      "component": "sharp-libvips",
+      "version_basis": "1.3.4 (recipe for libvips 8.18.7)",
+      "origin_url": "local://licenses/native/sharp-libvips/CORRESPONDING-SOURCE.md",
+      "sha256": "798847332e84fa981af5dbc1c6d06d983c65ec504ad3491c03dd2d2af391ba58",
+      "bytes": 6874,
+      "license_description": "Corresponding source download locations, recipe revisions, and relinking / replacement directions"
+    },
+    {
+      "file": "sharp-libvips/LICENSE",
+      "component": "sharp-libvips",
+      "version_basis": "1.3.4 (recipe for libvips 8.18.7)",
+      "origin_url": "https://raw.githubusercontent.com/lovell/sharp-libvips/v1.3.4/LICENSE",
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+      "bytes": 11357,
+      "license_description": "sharp-libvips Apache License 2.0"
+    },
+    {
+      "file": "sharp-libvips/THIRD-PARTY-NOTICES.md",
+      "component": "sharp-libvips",
+      "version_basis": "1.3.4 (recipe for libvips 8.18.7)",
+      "origin_url": "https://raw.githubusercontent.com/lovell/sharp-libvips/v1.3.4/THIRD-PARTY-NOTICES.md",
+      "sha256": "6f0d5086e3bcbee12bcdacf5878b31d1104002aeecaeb241d3fff466108082fe",
+      "bytes": 4230,
+      "license_description": "Official sharp-libvips third-party library notice and licensing inventory verbatim"
+    },
+    {
+      "file": "sharp-libvips/build-posix.sh",
+      "component": "sharp-libvips",
+      "version_basis": "1.3.4 (recipe for libvips 8.18.7)",
+      "origin_url": "https://raw.githubusercontent.com/lovell/sharp-libvips/v1.3.4/build/posix.sh",
+      "sha256": "333031b3b49bf1a16d0b9d6812d98f67c404218932ef8c0b389388524a524b36",
+      "bytes": 23877,
+      "license_description": "sharp-libvips POSIX build recipe specifying upstream source tarball URLs for all 29 dependencies"
+    },
+    {
+      "file": "sharp-libvips/build-win.sh",
+      "component": "sharp-libvips",
+      "version_basis": "1.3.4 (recipe for libvips 8.18.7)",
+      "origin_url": "https://raw.githubusercontent.com/lovell/sharp-libvips/v1.3.4/build/win.sh",
+      "sha256": "52f2d9d76b07d4b4ad1720659b1e9bbc76121b85f21d9d084a85af28014473f3",
+      "bytes": 1262,
+      "license_description": "sharp-libvips Windows packaging script downloading vips-dev-x64-web-8.18.7-static.zip"
+    },
+    {
+      "file": "sharp-libvips/versions.properties",
+      "component": "sharp-libvips",
+      "version_basis": "1.3.4 (recipe for libvips 8.18.7)",
+      "origin_url": "https://raw.githubusercontent.com/lovell/sharp-libvips/v1.3.4/versions.properties",
+      "sha256": "c0ad634f7c2ac8994f831dd0bcb5c60043db7ba4ddd9cc2dbc3703b15f4ec7e5",
+      "bytes": 594,
+      "license_description": "sharp-libvips pinned dependency version properties matching @img/sharp-win32-x64 versions.json"
+    },
+    {
+      "file": "sharp/LICENSE",
+      "component": "sharp",
+      "version_basis": "0.35.5",
+      "origin_url": "C:/Users/Anuj parwal/Auto-Mate/node_modules/@img/sharp-win32-x64/LICENSE",
+      "sha256": "6dfa6e396ac4888520069cfe0e3263667373d32c0a0f5446e81e9c4d0ad30808",
+      "bytes": 11113,
+      "license_description": "Sharp Apache License 2.0 (Copyright 2013 Lovell Fuller and others)"
+    },
+    {
+      "file": "zlib-ng/LICENSE.md",
+      "component": "zlib-ng",
+      "version_basis": "2.3.3",
+      "origin_url": "https://raw.githubusercontent.com/zlib-ng/zlib-ng/2.3.3/LICENSE.md",
+      "sha256": "6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee",
+      "bytes": 867,
+      "license_description": "zlib License (Copyright 1995-2024 Jean-loup Gailly and Mark Adler)"
+    }
+  ]
+}

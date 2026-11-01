@@ -47,6 +47,10 @@ jobs:
       - name: End-to-end synthetic DPAPI browser smoke
         run: bun run smoke
 
-      - name: Build deployable site and Windows package
+      - name: Build application-only Windows portable bundle
         shell: powershell
-        run: ./tools/build-site.ps1
+        run: ./tools/build-app.ps1
+
+      - name: Exercise extracted application with bundled runtime only
+        shell: powershell
+        run: ./tools/check-app.ps1

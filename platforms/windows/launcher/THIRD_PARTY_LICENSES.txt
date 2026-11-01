@@ -1,0 +1,67 @@
+AUTO-MATE WINDOWS APPLICATION — THIRD-PARTY MATERIALS
+Version: 0.1.0-preview.1 / Windows x64 / unsigned private preview
+
+This application archive includes third-party software under several licenses,
+including copyleft LGPL terms. These components are NOT all covered by Auto-Mate's
+own project terms or by a single permissive license. This file is a navigation and
+source/replacement guide, not a replacement for the original license documents.
+
+COMPLETE NOTICES AND LICENSE TEXTS
+
+1. licenses/common/
+   Unabridged GNU GPL 2/3, LGPL 2/2.1/3, and Apache 2.0 documents.
+   sources.json records the authoritative origin and SHA-256 of each saved text.
+   No reconstructed excerpts are labeled as complete license documents.
+
+2. licenses/bun/
+   Bun 1.4.4's original version-specific LICENSE.md, linked/ported library and
+   embedded-polyfill notices, and source/relink information. INDEX.json maps
+   the saved upstream materials to origin URLs and hashes. Bun itself is MIT;
+   its statically linked JavaScriptCore/WebKit includes LGPL-covered code.
+
+3. licenses/native/
+   Materials for the native libraries distributed through @img/sharp-win32-x64,
+   their component-specific copyright/license/patent notices and build/source
+   references. INDEX.json records origin, version basis, and exact file hashes.
+   The installed package's versions.json and README identify the shipped build.
+   A library inventory or URL alone is not a substitute for applicable notices.
+
+4. node_modules/<package>/
+   Original package notices remain with Playwright/playwright-core, Sharp,
+   @img/colour, @img/sharp-win32-x64, detect-libc, and semver. The wrapper's
+   Apache/MIT license does not override licenses of its native dependencies.
+
+5. browsers/
+   Original Chromium/headless-shell distribution materials are preserved with
+   the browser. The Playwright FFmpeg helper retains COPYING.LGPLv2.1. The
+   separate Gyan FFmpeg used to author the public marketing film is NOT bundled.
+   licenses/browser/ additionally preserves the actual 156.0.8078.4 browser's
+   complete embedded chrome://credits text and its Google Chrome additional
+   terms. Google Chrome/Chrome for Testing is not represented as a blanket
+   BSD-licensed binary. Browser vendor terms apply to this private evaluation;
+   public application redistribution requires a separate review.
+
+SOURCE AND MODIFICATION DIRECTIONS
+
+Bun runtime: https://github.com/oven-sh/bun/tree/bun-v1.4.4
+Patched WebKit: https://github.com/oven-sh/WebKit
+Bun's original 1.4.4 license explains rebuilding/relinking against its pinned
+WebKit version: clone vendor/WebKit, run bun sync-webkit-source, then
+bun run build:local. Follow that tagged source's dependency/build instructions.
+A rebuilt compatible Bun may replace bin/bun.exe; Auto-Mate does not impose a
+signature check preventing replacement of that runtime for license purposes.
+
+Native image libraries: the bundled @img/sharp-win32-x64/versions.json records
+exact library versions, including libvips 8.18.7. Corresponding upstream source
+and license materials are indexed in licenses/native/. Build recipes are at
+https://github.com/lovell/sharp-libvips and libvips source is at
+https://github.com/libvips/libvips/releases/tag/v8.18.7 . Preserve that build's
+patches/configuration when rebuilding. Interface-compatible rebuilt libvips and
+companion DLLs may replace their files under node_modules/@img/sharp-win32-x64/lib;
+Auto-Mate does not impose a signature check preventing those replacements.
+
+These directions identify upstream source/rebuilding facilities; they do not
+invent a publisher's three-year written source offer or claim independent legal
+certification. Preserve original notices and observe each component's actual
+terms when modifying or redistributing the archive. No application homepage,
+demo page, marketing film, real vault, API key, or maintainer context is included.

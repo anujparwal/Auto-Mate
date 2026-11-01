@@ -20,7 +20,7 @@ Show what the executor is doing, which webpage text requests which field, and wh
 
 Existing Bun/TypeScript broker and Playwright executor on Windows with native DPAPI storage. `bun start` opens real-site, fill-only owner approval for typed login/card records. `bun start --synthetic` retains the task-entry and optional local/cloud workflow-router demonstration. Models do not participate in real-site secret handling.
 
-Public distribution uses a static download/instructions site plus the installed owner website on each user's Windows PC. Vault/browser execution is not hosted for remote users. A source ZIP/checksum build and manual deployment workflow prepare this development preview for later publication, without changing repository visibility or claiming production readiness. The user supplies the OpenAI-compatible API; model hosting/setup is outside scope.
+The first Windows application release is an unsigned **private preview**, with a native launcher, bundled runtime/browser dependencies, and application-only ZIP/checksum. The separate public `Auto-Mate-homepage` repository contains the marketing homepage and labeled simulated, non-interactive product film; no homepage/demo page is shipped in the application release. Vault/browser execution stays on each user's Windows PC, never a remote multi-user service. Public application distribution, signing, and production readiness remain separate gates. The user supplies any OpenAI-compatible API; model hosting/setup is outside scope, and current real-site filling remains deterministic.
 
 ## Capabilities and Constraints
 
