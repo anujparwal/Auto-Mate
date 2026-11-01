@@ -27,6 +27,7 @@
     15. Root path escapes (direct root file, parent traversal) denied without creating or mutating files.
     16. Non-.test origins denied under synthetic mode without creating or mutating files.
     17. Normal operation without -Synthetic fails closed as VAULT_AUTHENTICATION_REQUIRED before touching files.
+    18. Unicode secret fidelity across detached and UTF-8-console broker processes.
 #>
 
 [CmdletBinding()]
@@ -84,7 +85,13 @@ function Report-Step {
     }
 }
 
+$originalInputEncoding = [System.Console]::InputEncoding
+$originalOutputEncoding = [System.Console]::OutputEncoding
 try {
+    # .NET Framework's stdin writer inherits Console.InputEncoding, including BOM.
+    $protocolUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
+    [System.Console]::InputEncoding = $protocolUtf8
+    [System.Console]::OutputEncoding = $protocolUtf8
     Add-Type -AssemblyName System.Security
 
     # Helper: Execute broker action against a specific vault file
@@ -112,6 +119,8 @@ try {
         $psi.RedirectStandardInput = $true
         $psi.RedirectStandardOutput = $true
         $psi.RedirectStandardError = $true
+        $psi.StandardOutputEncoding = $protocolUtf8
+        $psi.StandardErrorEncoding = $protocolUtf8
         $psi.UseShellExecute = $false
         $psi.CreateNoWindow = $true
 
@@ -219,6 +228,29 @@ try {
     $mismatchBlocked = ($mismatchRes.ExitCode -ne 0 -and $mismatchRes.Response -and $mismatchRes.Response.success -eq $false -and $mismatchRes.Response.error -eq "VAULT_REQUEST_DENIED")
     Report-Step -Name "Broker 'retrieve-fill' rejected for mismatched origin" -Success $mismatchBlocked
 
+    # Detached native processes must preserve UTF-8 independently of console code page.
+    $unicodeVaultPath = Join-Path $tempFolder "unicode_vault.json"
+    $unicodeSecret = "synthetic-" + [char]0x00E9 + [char]0x0915 + [char]::ConvertFromUtf32(0x1F512)
+    $unicodeWrite = Invoke-BrokerAction -Request @{
+        action = "store-secret"
+        origin = "https://unicode.example.test"
+        recordId = "unicode-service-user"
+        secret = $unicodeSecret
+    } -VaultFile $unicodeVaultPath
+    # Read in a UTF-8 console: matching wrong encodings at both ends can hide corruption.
+    $utf8ReadCommand = ('[Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false); [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); & ''{0}'' -Broker -Synthetic -VaultPath ''{1}''' -f
+                        $vaultScript.Replace("'", "''"), $unicodeVaultPath.Replace("'", "''"))
+    $encodedReadCommand = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($utf8ReadCommand))
+    $unicodeReadRequest = @{
+        action = "retrieve-fill"
+        origin = "https://unicode.example.test"
+        recordId = "unicode-service-user"
+    } | ConvertTo-Json -Compress
+    $unicodeResponse = $unicodeReadRequest | & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedReadCommand | ConvertFrom-Json
+    $unicodePreserved = ($unicodeWrite.ExitCode -eq 0 -and $LASTEXITCODE -eq 0 -and
+                         $unicodeResponse -and $unicodeResponse.secret -ceq $unicodeSecret)
+    Report-Step -Name "Unicode secrets survive detached write and UTF-8-console read exactly" -Success $unicodePreserved
+
     # --------------------------------------------------------------------------
     # Test 5: Concurrent Encrypted Updates & Identity Preservation
     # --------------------------------------------------------------------------
@@ -228,6 +260,8 @@ try {
     $psiBase.RedirectStandardInput = $true
     $psiBase.RedirectStandardOutput = $true
     $psiBase.RedirectStandardError = $true
+    $psiBase.StandardOutputEncoding = $protocolUtf8
+    $psiBase.StandardErrorEncoding = $protocolUtf8
     $psiBase.UseShellExecute = $false
     $psiBase.CreateNoWindow = $true
 
@@ -575,6 +609,8 @@ try {
     Report-Step -Name "Normal operation fails closed (VAULT_AUTHENTICATION_REQUIRED) before touching vault when Hello unauthenticated" -Success $normalAuthDenied
 
 } finally {
+    [System.Console]::InputEncoding = $originalInputEncoding
+    [System.Console]::OutputEncoding = $originalOutputEncoding
     # Cleanup temp isolated directory
     if (Test-Path $tempFolder) {
         try {

@@ -31,9 +31,6 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: bun install --frozen-lockfile
 
-      - name: Diagnose isolated native fixture
-        run: bun .github/diagnose-native.ts
-
       - name: Install Playwright Chromium
         run: bun x playwright install chromium
 

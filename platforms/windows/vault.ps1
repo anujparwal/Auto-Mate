@@ -1232,6 +1232,16 @@ Security:
 
 $exitCode = 0
 try {
+    if ($Broker) {
+        # Machine IPC is UTF-8, even when a detached Windows console defaults to OEM.
+        # Replace only this process's readers/writers; do not change console code pages.
+        $brokerUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
+        [System.Console]::SetIn((New-Object System.IO.StreamReader([System.Console]::OpenStandardInput(), $brokerUtf8, $false)))
+        $brokerOutput = New-Object System.IO.StreamWriter([System.Console]::OpenStandardOutput(), $brokerUtf8)
+        $brokerOutput.AutoFlush = $true
+        [System.Console]::SetOut($brokerOutput)
+    }
+
     if ($Synthetic) {
         Assert-SyntheticVaultPath -PathInput $VaultPath
     }

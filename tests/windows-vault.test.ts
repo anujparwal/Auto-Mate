@@ -87,6 +87,7 @@ windowsSuite('WindowsAutofillVault & WindowsPasswordStore (Native DPAPI Syntheti
     await expect(vault.read(origin, '   ', 'login')).rejects.toThrow('INVALID_RECORD_ID');
   });
 
+  // Includes seven real PowerShell starts plus DPAPI/ACL work on hosted Windows.
   test('roundtrips typed login and card records through native DPAPI storage', async () => {
     if (!isWindows) return;
     const vault = new WindowsAutofillVault({ vaultPath, mode: 'synthetic' });
@@ -141,7 +142,7 @@ windowsSuite('WindowsAutofillVault & WindowsPasswordStore (Native DPAPI Syntheti
     // Kind mismatch refusal
     await expect(vault.read(origin, 'user-login', 'card')).rejects.toThrow('VAULT_RECORD_KIND_MISMATCH');
     await expect(vault.read(origin, 'user-card', 'login')).rejects.toThrow('VAULT_RECORD_KIND_MISMATCH');
-  });
+  }, 20_000);
 
   test('verifies ciphertext at-rest privacy (no plaintext secrets or metadata in vault file)', async () => {
     if (!isWindows) return;

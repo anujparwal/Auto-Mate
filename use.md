@@ -125,6 +125,8 @@ powershell.exe -NoProfile -File .\platforms\windows\smoke-test.ps1
 
 Tests and smoke use isolated synthetic vault namespaces and test origins. They do not bypass normal-vault authentication or prove real hardware verification. See [README.md](README.md#verification-performed) for evidence and limits, including a previously observed intermittent browser-setup cascade that passed diagnostic reruns but is not claimed resolved. For browser diagnostics from PowerShell, set `$env:DEBUG='pw:browser'`, run `bun test`, then `Remove-Item Env:DEBUG`.
 
+The native smoke must report `Unicode secrets survive detached write and UTF-8-console read exactly` as passing, alongside encryption, restrictive ACL, migration, origin-refusal, and authentication-refusal checks. It uses only an isolated fictitious secret and restores its console encodings afterward.
+
 For a manual acceptance matrix, use [README.md](README.md#website-acceptance-checklist). Also check the owner UI at about 390 px width: no horizontal page overflow, no focus/draft loss from preview refresh, and no stale frame after Stop.
 
 ## 11. Prepare or deploy the public download site later
