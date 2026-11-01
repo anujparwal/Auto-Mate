@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Native test harness: give real multi-process DPAPI/ACL fixtures a bounded 60-second budget. Hosted verification exceeded the previous 20-second roundtrip budget and five-second defaults, causing Bun to kill active brokers and report late errors. Validation-only tests retain their default budget; production IPC/authentication deadlines, all security assertions, and the published application are unchanged. No retry or skipped test was added.
+- Separate homepage: changed the simulated film to viewport-wide muted inline autoplay and continuous looping without native media controls. Site/OS motion preferences still pause playback; captions, transcript, and honest format-failure handling remain available.
+
 ## 0.1.0-preview.1
 
 - First application release: an **unsigned private Windows x64 preview**, with a native launcher and bundled Bun, Chromium, runtime dependencies, required licenses, and application-only ZIP/checksum. No end-user Bun/Node setup, homepage, marketing demo page, or demo film is included.

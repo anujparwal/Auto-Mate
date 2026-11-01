@@ -6,6 +6,9 @@ import type { CardRecord, LoginRecord } from '../src/autofill-contract';
 
 const isWindows = process.platform === 'win32';
 const windowsSuite = isWindows ? describe : describe.skip;
+// Real native cold starts plus several sequential DPAPI/ACL broker processes.
+// This is a fixture budget, not a change to production/authentication deadlines.
+const nativeIntegrationTimeoutMs = 60_000;
 
 windowsSuite('WindowsAutofillVault & WindowsPasswordStore (Native DPAPI Synthetic Tests)', () => {
   let tempDir: string;
@@ -142,7 +145,7 @@ windowsSuite('WindowsAutofillVault & WindowsPasswordStore (Native DPAPI Syntheti
     // Kind mismatch refusal
     await expect(vault.read(origin, 'user-login', 'card')).rejects.toThrow('VAULT_RECORD_KIND_MISMATCH');
     await expect(vault.read(origin, 'user-card', 'login')).rejects.toThrow('VAULT_RECORD_KIND_MISMATCH');
-  }, 20_000);
+  }, nativeIntegrationTimeoutMs);
 
   test('verifies ciphertext at-rest privacy (no plaintext secrets or metadata in vault file)', async () => {
     if (!isWindows) return;
@@ -168,7 +171,7 @@ windowsSuite('WindowsAutofillVault & WindowsPasswordStore (Native DPAPI Syntheti
     expect(fileText).not.toContain('4532015000000007');
     expect(fileText).not.toContain('user-login');
     expect(fileText).not.toContain('user-card');
-  });
+  }, nativeIntegrationTimeoutMs);
 
   test('enforces wrong-origin denial', async () => {
     if (!isWindows) return;
@@ -191,7 +194,7 @@ windowsSuite('WindowsAutofillVault & WindowsPasswordStore (Native DPAPI Syntheti
     // Listing originB must not show entries for originA
     const entriesB = await vault.list(originB);
     expect(entriesB.length).toBe(0);
-  });
+  }, nativeIntegrationTimeoutMs);
 
   test('preserves old generated-password adapter functionality and allows login read', async () => {
     if (!isWindows) return;
@@ -214,7 +217,7 @@ windowsSuite('WindowsAutofillVault & WindowsPasswordStore (Native DPAPI Syntheti
 
     // Reading the legacy raw password as card fails with kind mismatch
     await expect(vault.read(origin, generated.reference, 'card')).rejects.toThrow('VAULT_RECORD_KIND_MISMATCH');
-  });
+  }, nativeIntegrationTimeoutMs);
 
   test('synthetic native records roundtrip when Windows TMP and TEMP disagree', async () => {
     const alternateTmp = join(tempDir, 'native-temp');
@@ -238,6 +241,6 @@ windowsSuite('WindowsAutofillVault & WindowsPasswordStore (Native DPAPI Syntheti
     ]);
     if (exitCode !== 0) throw new Error('Synthetic temp-root fixture failed: ' + stderr);
     expect(JSON.parse(stdout)).toEqual(record);
-  }, 20000);
+  }, nativeIntegrationTimeoutMs);
 
 });
