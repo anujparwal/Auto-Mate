@@ -9,6 +9,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+declare global {
+  interface Window {
+    domMutations?: number;
+    anim?: Animation;
+  }
+}
+
 const origin = 'https://preview-security.auto-mate.test';
 const email: FieldRequest = { id: 'email', name: 'Email', category: 'yellow', credential: 'registration-email', fieldSelector: '#email', requestSelector: '#email-label' };
 const password: FieldRequest = { id: 'password', name: 'Password', category: 'red', credential: 'registration-password', fieldSelector: '#password', requestSelector: '#password-label' };
@@ -222,3 +229,252 @@ test('unavailable durable audit stops a verified browser task before native cred
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('fully visible requesting text inside overflow containers can authorize its verified field', async () => {
+  const { context, page } = await openForm();
+  try {
+    await page.evaluate(() => { document.body.style.overflowX = 'hidden'; });
+    const fields = await verifyFieldRequests(page, origin, [password]);
+    await fillVerifiedField(page, origin, fields[0]!, 'synthetic-overflow-password');
+    expect(await page.locator('#password').inputValue()).toBe('synthetic-overflow-password');
+  } finally { await context.close(); }
+});
+
+test('partially clipped requesting text cannot authorize a protected fill', async () => {
+  const { context, page } = await openForm();
+  try {
+    await page.locator('#password-label').evaluate(label => {
+      label.style.width = '45px'; label.style.overflow = 'hidden'; label.style.whiteSpace = 'nowrap';
+    });
+    await expect(verifyFieldRequests(page, origin, [password])).rejects.toThrow('VERIFICATION_FAILED');
+    expect(await page.locator('#password').inputValue()).toBe('');
+  } finally { await context.close(); }
+});
+
+test('textarea, select, and contenteditable controls are opaquely masked regardless of contents', async () => {
+  const context = await browser.newContext({ viewport: { width: 900, height: 640 } });
+  const html = `<!doctype html><html><body style="margin:40px;font:16px sans-serif">
+    <label id="email-label" for="email">Account email</label>
+    <input id="email" type="email">
+    <textarea id="notes" style="width:200px;height:60px">Initial notes</textarea>
+    <select id="country"><option value="us">United States</option><option value="ca">Canada</option></select>
+    <div id="editable" contenteditable="true" style="width:200px;height:40px;border:1px solid black">Initial editable</div>
+  </body></html>`;
+  await context.route('**/*', route => route.fulfill({ contentType: 'text/html', body: html }));
+  const page = await context.newPage();
+  await page.goto(origin);
+  try {
+    const fields = await verifyFieldRequests(page, origin, [email]);
+    const baseline = await captureOwnerFrame(page, origin, fields);
+
+    await page.evaluate(() => {
+      const notes = document.getElementById('notes');
+      if (notes instanceof HTMLTextAreaElement) notes.value = 'Confidential memo or secret instructions';
+      const country = document.getElementById('country');
+      if (country instanceof HTMLSelectElement) country.value = 'ca';
+      const editable = document.getElementById('editable');
+      if (editable) editable.textContent = 'Sensitive user-entered content';
+    });
+
+    const mutated = await captureOwnerFrame(page, origin, fields);
+    expect(mutated.image).toBe(baseline.image);
+  } finally {
+    await context.close();
+  }
+});
+
+test('inputs inside open shadow roots are captured and opaquely masked off-page', async () => {
+  const context = await browser.newContext({ viewport: { width: 900, height: 640 } });
+  const html = `<!doctype html><html><body style="margin:40px">
+    <label id="email-label" for="email">Account email</label>
+    <input id="email" type="email">
+    <div id="shadow-host"></div>
+    <script>
+      const host = document.getElementById('shadow-host');
+      if (host) {
+        const root = host.attachShadow({ mode: 'open' });
+        root.innerHTML = '<input id="shadow-pin" type="text" style="width:150px;height:30px" value="0000">';
+      }
+    </script>
+  </body></html>`;
+  await context.route('**/*', route => route.fulfill({ contentType: 'text/html', body: html }));
+  const page = await context.newPage();
+  await page.goto(origin);
+  try {
+    const fields = await verifyFieldRequests(page, origin, [email]);
+    const baseline = await captureOwnerFrame(page, origin, fields);
+
+    await page.evaluate(() => {
+      const host = document.getElementById('shadow-host');
+      const shadowInput = host?.shadowRoot?.querySelector('input');
+      if (shadowInput instanceof HTMLInputElement) shadowInput.value = '9876-secret-pin';
+    });
+
+    const mutated = await captureOwnerFrame(page, origin, fields);
+    expect(mutated.image).toBe(baseline.image);
+  } finally {
+    await context.close();
+  }
+});
+
+test('visible iframes are covered as an opaque whole without exposing frame contents', async () => {
+  const context = await browser.newContext({ viewport: { width: 900, height: 640 } });
+  const html = `<!doctype html><html><body style="margin:40px">
+    <label id="email-label" for="email">Account email</label>
+    <input id="email" type="email">
+    <iframe id="payment-widget" srcdoc="<html><body style='background:red;color:white'>Card 4111-2222-3333-4444</body></html>" style="width:300px;height:120px;border:none"></iframe>
+  </body></html>`;
+  await context.route('**/*', route => route.fulfill({ contentType: 'text/html', body: html }));
+  const page = await context.newPage();
+  await page.goto(origin);
+  try {
+    const fields = await verifyFieldRequests(page, origin, [email]);
+    const baseline = await captureOwnerFrame(page, origin, fields);
+
+    await page.locator('#payment-widget').evaluate(async frame => {
+      if (!(frame instanceof HTMLIFrameElement)) throw new Error('MISSING_IFRAME');
+      const { promise, resolve } = Promise.withResolvers<void>();
+      frame.addEventListener('load', () => resolve(), { once: true });
+      frame.srcdoc = "<html><body style='background:yellow;color:black'>Card 5555-6666-7777-8888</body></html>";
+      await promise;
+    });
+
+    const mutated = await captureOwnerFrame(page, origin, fields);
+    expect(mutated.image).toBe(baseline.image);
+  } finally {
+    await context.close();
+  }
+});
+
+test('controls extending outside the viewport are clamped and rounded outward to viewport bounds', async () => {
+  const context = await browser.newContext({ viewport: { width: 900, height: 640 } });
+  const html = `<!doctype html><html><body style="margin:0;padding:20px">
+    <label id="email-label" for="email">Account email</label>
+    <input id="email" type="email">
+    <input id="partially-offscreen" style="position:absolute;left:-50px;top:100px;width:120px;height:35px" value="partially-hidden-secret">
+  </body></html>`;
+  await context.route('**/*', route => route.fulfill({ contentType: 'text/html', body: html }));
+  const page = await context.newPage();
+  await page.goto(origin);
+  try {
+    const fields = await verifyFieldRequests(page, origin, [email]);
+    const baseline = await captureOwnerFrame(page, origin, fields);
+
+    await page.evaluate(() => {
+      const input = document.getElementById('partially-offscreen');
+      if (input instanceof HTMLInputElement) input.value = 'new-secret-exceeding-bounds';
+    });
+
+    const mutated = await captureOwnerFrame(page, origin, fields);
+    expect(mutated.image).toBe(baseline.image);
+  } finally {
+    await context.close();
+  }
+});
+
+test('control mask geometry movement between capture bounds triggers fail-closed rejection', async () => {
+  const context = await browser.newContext({ viewport: { width: 900, height: 640 } });
+  const html = `<!doctype html><html><body style="margin:40px">
+    <label id="email-label" for="email">Account email</label>
+    <input id="email" type="email">
+    <input id="moving-control" style="width:100px;height:30px;margin-top:20px">
+  </body></html>`;
+  await context.route('**/*', route => route.fulfill({ contentType: 'text/html', body: html }));
+  const page = await context.newPage();
+  await page.goto(origin);
+  try {
+    const fields = await verifyFieldRequests(page, origin, [email]);
+    const screenshot = page.screenshot.bind(page);
+    page.screenshot = async options => {
+      const image = await screenshot(options);
+      await page.locator('#moving-control').evaluate(element => { element.style.marginLeft = '30px'; });
+      return image;
+    };
+    const failure = await captureOwnerFrame(page, origin, fields).then(() => undefined, error => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe('CAPTURE_FRAME_FAILED');
+  } finally {
+    await context.close();
+  }
+});
+
+test('capture does not pause or reset running animations and injects no DOM mask or style mutations', async () => {
+  const context = await browser.newContext({ viewport: { width: 900, height: 640 } });
+  const html = `<!doctype html><html><body style="margin:40px">
+    <label id="email-label" for="email">Account email</label>
+    <input id="email" type="email" value="user@example.test">
+    <div id="anim-box" style="width:60px;height:60px;background:blue;margin-top:20px"></div>
+    <script>
+      window.domMutations = 0;
+      const observer = new MutationObserver(mutations => {
+        window.domMutations += mutations.length;
+      });
+      observer.observe(document.documentElement, {
+        attributes: true,
+        childList: true,
+        subtree: true,
+        attributeFilter: ['style', 'class', 'data-playwright-mask']
+      });
+
+      window.anim = document.getElementById('anim-box').animate([
+        { transform: 'translateX(0px)' },
+        { transform: 'translateX(300px)' }
+      ], { duration: 10000, iterations: Infinity });
+    </script>
+  </body></html>`;
+  await context.route('**/*', route => route.fulfill({ contentType: 'text/html', body: html }));
+  const page = await context.newPage();
+  await page.goto(origin);
+
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('DOM.enable');
+  await cdp.send('DOM.getDocument', { depth: -1 });
+
+  let cdpDomEvents = 0;
+  cdp.on('DOM.attributeModified', () => { cdpDomEvents++; });
+  cdp.on('DOM.childNodeInserted', () => { cdpDomEvents++; });
+  cdp.on('DOM.childNodeRemoved', () => { cdpDomEvents++; });
+
+  try {
+    const fields = await verifyFieldRequests(page, origin, [email]);
+
+    await page.evaluate(async () => {
+      if (window.anim) await window.anim.ready;
+    });
+    const initialAnimationState = await page.evaluate(() => {
+      const anim = window.anim;
+      if (!anim) throw new Error('MISSING_ANIMATION');
+      return {
+        playState: anim.playState,
+        currentTime: typeof anim.currentTime === 'number' ? anim.currentTime : 0,
+      };
+    });
+    expect(initialAnimationState.playState).toBe('running');
+
+    await page.evaluate(() => {
+      window.domMutations = 0;
+    });
+    cdpDomEvents = 0;
+
+    await captureOwnerFrame(page, origin, fields);
+
+    const pageMutations = await page.evaluate(() => window.domMutations ?? 0);
+    expect(pageMutations).toBe(0);
+    expect(cdpDomEvents).toBe(0);
+
+    const postCaptureAnimationState = await page.evaluate(() => {
+      const anim = window.anim;
+      if (!anim) throw new Error('MISSING_ANIMATION');
+      return {
+        playState: anim.playState,
+        currentTime: typeof anim.currentTime === 'number' ? anim.currentTime : 0,
+      };
+    });
+    expect(postCaptureAnimationState.playState).toBe('running');
+    expect(postCaptureAnimationState.currentTime).toBeGreaterThan(initialAnimationState.currentTime);
+  } finally {
+    await cdp.detach().catch(() => {});
+    await context.close();
+  }
+});
+

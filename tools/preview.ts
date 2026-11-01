@@ -7,6 +7,7 @@ import { register, type Registration, type WorkflowResult } from '../src/workflo
 import { SYNTHETIC_VAULT_ROOT, WindowsPasswordStore } from '../src/windows-vault';
 import { LocalAuditJournal } from '../src/audit';
 import { LocalAuditHistory } from '../src/audit-history';
+import type { TaskPlanner } from '../src/task-planner';
 
 const origin = 'https://registration.auto-mate.test';
 const registration: Registration = {
@@ -21,7 +22,7 @@ const success = `<!doctype html><html lang="en"><head><meta charset="utf-8"><tit
 
 /** Development demonstration. Approval never authorizes real vaults or other tasks. */
 export async function openPreviewDemo(options: {
-  headlessOwner?: boolean; delayMs?: number; viewer?: Browser; auditDirectory?: string;
+  headlessOwner?: boolean; delayMs?: number; viewer?: Browser; auditDirectory?: string; planner?: TaskPlanner;
 } = {}) {
   const auditDirectory = options.auditDirectory ?? (process.env.LOCALAPPDATA
     ? join(process.env.LOCALAPPDATA, 'AutoMate', 'audit') : undefined);
@@ -60,6 +61,7 @@ export async function openPreviewDemo(options: {
     viewer = options.viewer ?? await chromium.launch({ headless: options.headlessOwner ?? false });
     owner = await OwnerPreview.open(viewer, {
       history: new LocalAuditHistory(auditDirectory),
+      planner: options.planner,
       approval: { origin, credentials: [
         { name: 'Account email', category: policy.category('registration-email') },
         { name: 'New password', category: policy.category('registration-password') },

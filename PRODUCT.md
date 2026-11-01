@@ -18,15 +18,21 @@ Show what the executor is doing, which webpage text requests which field, and wh
 
 ## Operating Context
 
-Existing Bun/TypeScript broker and Playwright executor on Windows. Native DPAPI storage. The current executable workflow is a synthetic registration demonstration; no AI provider is connected.
+Existing Bun/TypeScript broker and Playwright executor on Windows with native DPAPI storage. `bun start` opens real-site, fill-only owner approval for typed login/card records. `bun start --synthetic` retains the task-entry and optional local/cloud workflow-router demonstration. Models do not participate in real-site secret handling.
+
+Public distribution uses a static download/instructions site plus the installed owner website on each user's Windows PC. Vault/browser execution is not hosted for remote users. A source ZIP/checksum build and manual deployment workflow prepare this development preview for later publication, without changing repository visibility or claiming production readiness. The user supplies the OpenAI-compatible API; model hosting/setup is outside scope.
 
 ## Capabilities and Constraints
 
+- Real-site inspection opens a fresh exact-origin HTTPS browser without vault access. Individual field checkboxes start unchecked; only approved fields can read/use the selected origin-bound record. Model planning is isolated to the synthetic demonstration and receives neither page content nor vault/owner authority.
+- A separate owner-only Vault column adds exact-origin login/card records and lists authenticated record identities before any website inspection. Saving/listing does not approve disclosure; Lock clears owner drafts/metadata and stops execution without deleting records. Neither plaintext nor ciphertext export is exposed to models.
 - Deterministic code validates text-to-field relationships and draws paired, numbered highlights.
+- Live capture applies opaque masks off-page without injecting screenshot styles or pausing website animations. The real-site renderer preserves unchanged frames, layout, and owner form focus; inspection revisions and decode cancellation prevent stale scenes after Stop or replacement.
 - Yellow, Orange, and Red are user-requested credential secrecy categories. Trusted configuration assigns them; registration rejects labels that disagree with the broker catalog, and credential use requires explicit category-scoped authorization. Category editing/persistence UI and Android category policy remain unimplemented.
-- The owner must explicitly approve categories and a 1/5/15-minute single-task duration or deny before worker navigation. This synthetic approval does not bypass native authentication or open a blanket auto-approval window.
+- Real-site record list/save/read operations require successful Windows Hello, independently of field approval. The owner selects a 1/5/15-minute lifetime; the filled browser stays protected until stop, expiry, evidence/page change, or closure. No app-initiated Login, Pay, Submit, or purchase action is performed.
 - Broker authorization events persist with opaque session/task tokens and no raw account identities; an audit write failure prevents further credential use. The read-only historical viewer supports paginated sessions/events, incomplete-tail warnings, strict corruption refusal, and explicit live refresh without granting execution authority. OS notifications remain unimplemented.
-- Active grant expiry and revocation promptly request protected-browser closure even during pending work. Already-started native persistence remains awaited and may complete after cancellation; this is not OS session-lock enforcement or rollback.
+- Active expiry/revocation promptly request browser closure. The real-site window additionally monitors WTS session transitions, active/input desktop availability, and channel freshness. Native operations already started may finish after cancellation. Positive authentication and actual OS lock/disconnect interactions remain hardware-unverified.
+- Card storage/filling supports cardholder, number, and expiry only; CVV/CVC, PINs, OTPs, bank-account fields, and unrelated controls are excluded. Embedded/cross-origin payment forms and unsupported/ambiguous fields fail closed, not through an authentication or evidence bypass.
 - Association evidence is DOM structure, not proof that a website is trustworthy or its request is legitimate.
 - Owner-only frames are not a model-safe redaction channel. Never expose them to AI tools.
 - Show explicit execution states and unverified associations; never use color as the only explanation.
@@ -34,7 +40,9 @@ Existing Bun/TypeScript broker and Playwright executor on Windows. Native DPAPI 
 
 ## Evidence on Hand
 
-`tools/smoke.ts` exercises actual DPAPI persistence, Chromium against intercepted synthetic HTTPS pages, and strict history-reader roundtrip. Actual owner history browsing, error recovery, read-only behavior, and live refresh were exercised with isolated synthetic journals. Cancellation was exercised during held navigation and a delayed acknowledgement from real synthetic Windows persistence; owner Stop and active-expiry states were also observed in Chromium. No production website or customer claims exist.
+The actual owner UI filled The Internet's public HTTPS login using published credentials and Autofill.me's public HTTPS card form using fictitious data, with explicit field approval, no application POST, unchanged CVV, private audit bytes, and no 390 px horizontal overflow. These browser checks used an explicitly isolated in-memory public-data fixture; actual encrypted typed-record/Unicode roundtrips were verified separately in isolated native DPAPI `.test` vaults. The default normal-vault UI showed unavailable-Hello refusal with fields untouched; positive normal-vault-to-site filling remains unverified. The native session monitor started and closed fail-closed; real lock/disconnect and secure-desktop authentication behavior remain unverified. Existing synthetic registration, planning protocol, cancellation, audit/history, and Android host/build evidence remains documented in README.md. No real customer account, card, or payment was used.
+
+The independent Vault UI additionally saved login/card fixtures through actual DPAPI before browser creation, listed identities without values, and retrieved the login only after explicit username approval, leaving the password untouched. Delayed listing could not repopulate a locked Vault. Four unchanged frames preserved image/annotation nodes, draft focus/selection, scroll, and geometry; a late old decode could not replace a newer inspection. Four public-login captures produced no DOM mask/style mutations. Desktop columns and the 390 px stacked layout were inspected. This used isolated fictitious `.test` data, not positive Windows Hello.
 
 ## Product Principles
 
