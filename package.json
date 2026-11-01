@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "setup": "powershell.exe -NoProfile -File tools/setup-windows.ps1",
+    "build:site": "powershell.exe -NoProfile -File tools/build-site.ps1",
+    "start": "bun run tools/start.ts",
     "test": "bun test",
     "smoke": "bun run tools/smoke.ts",
     "typecheck": "tsc --noEmit",
@@ -14,6 +17,7 @@
     "typescript": "^5.9.0"
   },
   "dependencies": {
-    "playwright": "^1.64.1"
+    "playwright": "^1.64.1",
+    "sharp": "0.35.5"
   }
 }

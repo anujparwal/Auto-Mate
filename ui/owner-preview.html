@@ -11,7 +11,7 @@
 <body>
   <header class="app-header">
     <div class="identity"><svg viewBox="0 0 28 28" width="28" height="28" aria-hidden="true"><path d="M3 21 10 7h5l-7 14M14 21l7-14h4l-7 14M8 16h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><strong>Auto-Mate</strong><span>Owner preview</span></div>
-    <span class="boundary">Local only · Not shared with AI</span>
+    <span id="privacy-boundary" class="boundary">Local only · Not shared with AI</span>
   </header>
   <main>
     <section class="task-heading" aria-labelledby="title">
@@ -24,13 +24,37 @@
     </section>
     <div class="task-meta"><span id="origin">Waiting for a task</span><span id="phase" role="status" aria-live="polite">Ready</span></div>
 
+    <section id="task-entry" class="approval-card" aria-labelledby="task-entry-title" hidden>
+      <div class="approval-header">
+        <h2 id="task-entry-title">1. Choose a task</h2>
+        <span id="planner-mode" class="approval-badge"></span>
+      </div>
+      <p id="planner-privacy" class="approval-notice"></p>
+      <label for="task-prompt" class="approval-label">Task instruction · Never enter passwords or private account data</label>
+      <textarea id="task-prompt" rows="3" maxlength="2000" autocomplete="off" spellcheck="false">Run synthetic registration</textarea>
+      <label id="cloud-consent-row" class="category-choice" for="cloud-consent" hidden>
+        <input id="cloud-consent" type="checkbox">
+        <span>I consent to sending this instruction to the configured cloud model.</span>
+      </label>
+      <div class="task-plan-actions">
+        <button id="plan-task" type="button">Review task</button>
+        <span id="planner-status" role="status" aria-live="polite"></span>
+      </div>
+      <div id="planner-error" class="approval-error" role="alert" hidden></div>
+      <div id="task-plan" class="task-plan" hidden>
+        <strong>2. Review the trusted execution plan</strong>
+        <p>Create a synthetic account at https://registration.auto-mate.test using a fixed synthetic email and a newly generated password. Save the password in the isolated temporary Windows DPAPI vault, fill the verified fields, and submit once.</p>
+        <p>No real account is created. The temporary vault is deleted when this window closes. Select Yellow and Red below, then approve—or deny without executing.</p>
+      </div>
+    </section>
+
     <section id="approval-card" class="approval-card" aria-label="Task authorization and scope">
       <div class="approval-header">
         <h2>Task authorization</h2>
         <span id="approval-badge" class="approval-badge">Owner approval required</span>
       </div>
       <p class="approval-notice">
-        <strong>Single-task permission only.</strong> Synthetic registration; no AI model connected.
+        <strong>Single-task permission only.</strong> Synthetic registration.
         Authorizes one-time execution for this task only. This is <em>not</em> a native authentication bypass and does <em>not</em> open a blanket timed auto-approval window. No hidden preapproval.
       </p>
 

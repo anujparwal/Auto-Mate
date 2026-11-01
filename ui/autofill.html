@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Auto-Mate · Vault and approved autofill</title>
+  <link rel="stylesheet" href="/owner-preview.css">
+  <link rel="stylesheet" href="/autofill.css">
+  <script src="/autofill.js" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="identity"><strong>Auto-Mate</strong><span>Vault &amp; website autofill</span></div>
+    <span class="boundary">Owner only · No vault access for AI</span>
+  </header>
+  <main>
+    <section class="task-heading">
+      <div><h1>Your vault. Your approval.</h1><p>Store data privately, then approve individual disclosures.</p></div>
+      <button id="stop" type="button">Stop &amp; close website</button>
+    </section>
+    <p class="approval-notice"><strong>Development software.</strong> Windows Hello is required for normal vault operations. Verify authentication and lifecycle behavior on your hardware before using private data. Filling discloses approved data to the website and its scripts; Stop cannot undo that disclosure. The app does not click Login, Pay, or Submit.</p>
+    <div class="task-meta"><span id="destination">No website open</span><span id="phase" role="status" aria-live="polite">Ready</span></div>
+    <div id="error" class="approval-error" role="alert" hidden></div>
+    <p id="message" role="status" aria-live="polite"></p>
+
+    <div class="autofill-workspace">
+      <aside id="vault-column" class="approval-card vault-column" aria-labelledby="vault-heading">
+        <div class="vault-heading"><h2 id="vault-heading">Vault</h2><span id="vault-status" class="approval-badge">Metadata locked</span></div>
+        <p class="approval-notice">Add a login or card without inspecting any website. Data stays encrypted in the native vault; every save, list, and retrieval requires Windows Hello.</p>
+        <p class="vault-boundary"><strong>AI boundary:</strong> no vault API, plaintext, ciphertext export, or preview access. Approval authorizes trusted code to fill selected fields—not reveal values to the agent.</p>
+        <form id="save-form" class="vault-form" autocomplete="off">
+          <label for="vault-origin">Allowed HTTPS origin</label>
+          <input id="vault-origin" type="url" required maxlength="2048" placeholder="https://example.com" autocomplete="off">
+          <button id="vault-use-origin" class="compact-button" type="button" disabled>Use inspected site</button>
+          <label for="vault-kind">Record type</label>
+          <select id="vault-kind"><option value="login">Login</option><option value="card">Payment card</option></select>
+          <label for="vault-record-id">Record ID</label>
+          <input id="vault-record-id" required maxlength="320" autocomplete="off" placeholder="A name you recognize">
+          <div id="login-fields" class="vault-values">
+            <label for="save-username">Username / email</label>
+            <input id="save-username" maxlength="320" autocomplete="off">
+            <label for="save-password">Password</label>
+            <input id="save-password" type="password" maxlength="4096" autocomplete="new-password">
+          </div>
+          <div id="card-fields" class="vault-values" hidden>
+            <label for="save-cardholder">Name on card</label>
+            <input id="save-cardholder" maxlength="200" autocomplete="off">
+            <label for="save-card-number">Card number</label>
+            <input id="save-card-number" type="password" inputmode="numeric" maxlength="24" autocomplete="off">
+            <div class="vault-expiry">
+              <label>Expiry month<input id="save-month" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="MM"></label>
+              <label>Expiry year<input id="save-year" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="YYYY"></label>
+            </div>
+          </div>
+          <button id="save-record" class="primary" type="submit" disabled>Authenticate &amp; save encrypted record</button>
+        </form>
+        <p class="approval-notice">An existing ID is replaced only for this exact origin. CVV, PINs, and OTPs are not stored. Values clear from this form when sent; an already-started native save cannot be rolled back by Stop.</p>
+        <div class="vault-actions">
+          <button id="vault-list" type="button" disabled>Authenticate &amp; list IDs</button>
+          <button id="vault-lock" type="button">Lock vault &amp; stop</button>
+        </div>
+        <label class="vault-records-label" for="vault-records">Owner-only record identities</label>
+        <select id="vault-records" disabled><option value="">Metadata locked</option></select>
+        <button id="vault-use-record" class="compact-button" type="button" disabled>Use this ID for website approval</button>
+        <p id="vault-message" class="vault-message" role="status" aria-live="polite"></p>
+        <div id="vault-error" class="approval-error" role="alert" hidden></div>
+      </aside>
+
+      <section class="website-column" aria-label="Website inspection and approved filling">
+        <section class="approval-card" aria-labelledby="website-heading">
+          <h2 id="website-heading">1. Inspect a website · No vault access</h2>
+          <form id="inspect-form" class="autofill-grid">
+            <label>HTTPS page URL<input id="website-url" type="url" required maxlength="2048" value="https://the-internet.herokuapp.com/login" autocomplete="off"></label>
+            <label>Record type<select id="record-kind"><option value="login">Login</option><option value="card">Payment card</option></select></label>
+            <button id="inspect" type="submit">Inspect website</button>
+          </form>
+          <div class="task-plan-actions"><button id="example-login" type="button">Public login test</button><button id="example-card" type="button">Public card test</button></div>
+          <p class="approval-notice">The website opens in a separate protected browser. Only unique, explicitly labelled fields are supported. Off-origin redirects, embedded payment frames, ambiguous forms, CAPTCHA, and MFA are not bypassed.</p>
+        </section>
+        <section class="approval-card" aria-labelledby="approval-heading">
+          <h2 id="approval-heading">2. Approve individual disclosures</h2>
+          <label class="approval-label" for="record-id">Vault record ID for this destination</label>
+          <input id="record-id" maxlength="320" autocomplete="off" placeholder="Enter a known ID or use the Vault column" disabled>
+          <p id="record-selection-status" class="approval-notice">Selecting a record ID does not approve any disclosure.</p>
+          <p class="approval-notice">Nothing is preselected. Each checked field authorizes disclosure only to the exact destination above. A legacy password record uses its ID as the username.</p>
+          <div id="fields"><p class="waiting">Inspect a supported website to see verified requesting text and fields.</p></div>
+          <div class="task-plan-actions">
+            <label>Protected page lifetime<select id="duration"><option value="60">1 minute</option><option value="300">5 minutes</option><option value="900">15 minutes</option></select></label>
+            <button id="fill" class="primary" type="button" disabled>Approve selected fields &amp; authenticate</button>
+            <button id="deny" type="button" disabled>Deny &amp; close website</button>
+          </div>
+          <p class="approval-notice">The filled page remains protected until Stop, expiry, lock/disconnect, evidence change, or closure. Approval never replaces Windows Hello. No automatic submission, payment, or model observation.</p>
+        </section>
+        <section class="approval-card" aria-labelledby="preview-heading">
+          <div class="preview-heading"><h2 id="preview-heading">Live protected website</h2><span id="frame-status">Waiting for inspection</span></div>
+          <p class="approval-notice">Read-only owner preview. Dashed boxes mark requesting text; solid boxes mark fields. Matching numbers connect each pair. Controls and embedded frames are masked outside the website; these pixels never go to AI.</p>
+          <div id="frame-shell"><p id="frame-empty" class="waiting">No website frame yet.</p><div id="canvas" hidden><img id="frame-image" alt="Masked protected website"><div id="annotations"></div></div></div>
+        </section>
+      </section>
+    </div>
+    <p class="approval-notice">Authorization events use the existing metadata-minimal local journal; URLs, record IDs, values, and card data are not included. Run <code>bun run preview</code> for read-only audit history and the synthetic demonstration.</p>
+  </main>
+</body>
+</html>

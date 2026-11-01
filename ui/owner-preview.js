@@ -96,6 +96,29 @@
     void sendCommand({ action: 'stop' });
   });
 
+  function updatePlanButtonState() {
+    const entry = current.taskEntry;
+    byId('plan-task').disabled = !entry || terminal || entry.status !== 'idle' ||
+      !byId('task-prompt').value.trim() || (entry.mode === 'cloud' && !byId('cloud-consent').checked);
+  }
+  byId('task-prompt').addEventListener('input', updatePlanButtonState);
+  byId('cloud-consent').addEventListener('change', updatePlanButtonState);
+  byId('plan-task').addEventListener('click', async () => {
+    byId('plan-task').disabled = true;
+    byId('task-prompt').disabled = true;
+    try {
+      await window.autoMatePlanTask({
+        prompt: byId('task-prompt').value,
+        allowCloud: byId('cloud-consent').checked,
+      });
+    } catch {
+      byId('planner-error').textContent = 'Task request was not accepted. No execution was authorized.';
+      byId('planner-error').hidden = false;
+      byId('task-prompt').disabled = terminal || current.taskEntry?.status !== 'idle';
+      updatePlanButtonState();
+    }
+  });
+
   function select(id) {
     selected = selected === id ? null : id;
     for (const [key, node] of overlayNodes) node.classList.toggle('selected', key.startsWith(selected + ':'));
@@ -106,6 +129,35 @@
     current = state;
     terminal = isTerminal(state.phase);
 
+    const entry = state.taskEntry;
+    byId('task-entry').hidden = !entry;
+    if (entry) {
+      const reviewed = entry.mode === 'reviewed';
+      const cloud = entry.mode === 'cloud';
+      byId('privacy-boundary').textContent = reviewed
+        ? 'Local only · No AI connected'
+        : 'Preview stays local · Only your task instruction goes to AI';
+      byId('description').textContent = reviewed
+        ? 'Working prototype · Reviewed command · No AI connected'
+        : 'Working prototype · ' + (cloud ? 'Cloud' : 'Local') + ' model planning · Synthetic execution only';
+      byId('planner-mode').textContent = reviewed ? 'Reviewed command · Offline' : (cloud ? 'Cloud' : 'Local') + ' model';
+      byId('planner-privacy').textContent = reviewed
+        ? 'No model request is made. Enter “Run synthetic registration” to select the reviewed workflow. Other commands are unsupported.'
+        : 'Only your task instruction is sent to the configured ' + (cloud ? 'cloud' : 'loopback local') +
+          ' provider. Never include secrets. Website content, preview frames, vault data, and approval controls are not sent. Provider retention is outside this app’s control.';
+      byId('cloud-consent-row').hidden = !cloud;
+      byId('task-prompt').disabled = terminal || entry.status !== 'idle';
+      byId('cloud-consent').disabled = terminal || entry.status !== 'idle';
+      byId('plan-task').textContent = reviewed ? 'Review task' : 'Ask model to plan';
+      byId('planner-status').textContent = terminal ? 'Task ended. Restart the app for a new task.' :
+        entry.status === 'planning' ? 'Planning · No execution authority granted' :
+        entry.status === 'ready' ? 'Plan ready · Owner approval required' : 'Waiting for a task instruction';
+      byId('planner-error').textContent = entry.error || '';
+      byId('planner-error').hidden = !entry.error;
+      byId('task-plan').hidden = entry.status !== 'ready';
+      updatePlanButtonState();
+    }
+
     const dest = state.approval?.origin || state.origin || 'Waiting for a task';
     byId('origin').textContent = dest;
     byId('approval-destination').textContent = state.approval?.origin || state.origin || '—';
@@ -114,9 +166,11 @@
       byId('approval-scope').textContent = state.operationScope;
     }
 
-    byId('phase').textContent = phaseNames[state.phase] || 'Paused';
+    byId('phase').textContent = !terminal && entry && entry.status !== 'ready'
+      ? (entry.status === 'planning' ? 'Planning' : 'Awaiting task') : phaseNames[state.phase] || 'Paused';
     byId('approval-badge').textContent = terminal ? phaseNames[state.phase] :
-      (state.canStart ? 'Owner approval required' : 'Approved for this task');
+      (entry && entry.status !== 'ready' ? 'Plan required before approval' :
+        state.canStart ? 'Owner approval required' : 'Approved for this task');
 
     const errorEl = byId('approval-error');
     if (errorEl) {

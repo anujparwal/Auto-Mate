@@ -1,9 +1,10 @@
 import type { ElementHandle, Page } from 'playwright';
+import sharp from 'sharp';
 import { httpsOrigin } from './policy';
 import type { Annotation, Association, FieldRequest, OwnerFrame, Rect, VerifiedField } from './preview-contract';
 
 interface DomPair {
-  field: HTMLInputElement;
+  field: HTMLInputElement | HTMLSelectElement;
   source: HTMLElement;
   request: FieldRequest;
   expected?: { association: Association; sourceText: string };
@@ -35,9 +36,13 @@ function inspectDocument({ origin, pairs }: { origin: string; pairs: readonly Do
   }
   for (const pair of pairs) {
     const { field, source, request } = pair;
-    if (!(field instanceof HTMLInputElement) || !(source instanceof HTMLElement) || field.disabled || field.readOnly ||
-        ['hidden', 'submit', 'button', 'reset', 'image', 'checkbox', 'radio', 'file'].includes(field.type) ||
-        (request.credential === 'registration-password' && field.type !== 'password')) throw new Error('EVIDENCE_INVALID');
+    const input = field instanceof HTMLInputElement;
+    const select = field instanceof HTMLSelectElement;
+    if ((!input && !select) || !(source instanceof HTMLElement) || field.disabled ||
+        (input && (field.readOnly || ['hidden', 'submit', 'button', 'reset', 'image', 'checkbox', 'radio', 'file'].includes(field.type))) ||
+        (select && field.multiple) ||
+        (['registration-password', 'autofill:password'].includes(request.credential) && (!input || field.type !== 'password')))
+      throw new Error('EVIDENCE_INVALID');
     const selectedFields = document.querySelectorAll(request.fieldSelector);
     const selectedSources = document.querySelectorAll(request.requestSelector);
     if (selectedFields.length !== 1 || selectedFields[0] !== field || selectedSources.length !== 1 || selectedSources[0] !== source ||
@@ -61,29 +66,35 @@ function inspectDocument({ origin, pairs }: { origin: string; pairs: readonly Do
     while (walker.nextNode()) {
       const node = walker.currentNode;
       const parent = node.parentElement;
-      if (!parent || parent.closest('input,textarea,select,[contenteditable]') ||
+      if (!parent || !node.textContent?.trim() || parent.closest('input,textarea,select,[contenteditable]') ||
           !parent.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) continue;
-      // Range rectangles do not account for ancestor clipping. Unsupported clipping fails closed.
-      let clipped = false;
+      // Accept whole text nodes only when every fragment fits the viewport and each overflow clip.
+      // Nonrectangular clipping, transforms, masking, and paint containment remain unsupported.
+      let left = 0; let top = 0; let right = innerWidth; let bottom = innerHeight;
+      let unsupported = false;
       for (let ancestor: HTMLElement | null = parent; ancestor; ancestor = ancestor.parentElement) {
         const style = getComputedStyle(ancestor);
-        if (style.overflowX !== 'visible' || style.overflowY !== 'visible' || style.clip !== 'auto' ||
-            style.clipPath !== 'none' || style.maskImage !== 'none' ||
+        if (style.clip !== 'auto' || style.clipPath !== 'none' || style.maskImage !== 'none' ||
+            style.transform !== 'none' || style.perspective !== 'none' ||
+            (style.zoom !== '1' && style.zoom !== 'normal') ||
             /(?:^|\s)(?:paint|strict|content)(?:\s|$)/.test(style.contain)) {
-          clipped = true;
-          break;
+          unsupported = true; break;
+        }
+        if (style.overflowX !== 'visible' || style.overflowY !== 'visible') {
+          const box = ancestor.getBoundingClientRect();
+          const x = box.left + ancestor.clientLeft; const y = box.top + ancestor.clientTop;
+          if (style.overflowX !== 'visible') { left = Math.max(left, x); right = Math.min(right, x + ancestor.clientWidth); }
+          if (style.overflowY !== 'visible') { top = Math.max(top, y); bottom = Math.min(bottom, y + ancestor.clientHeight); }
         }
       }
-      if (clipped) continue;
-      const range = document.createRange();
-      range.selectNodeContents(node);
-      const rects = range.getClientRects();
-      let rendered = false;
-      for (let index = 0; index < rects.length; index++) {
-        const rect = rects.item(index);
-        if (rect && rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0 &&
-            rect.left < innerWidth && rect.top < innerHeight) { rendered = true; break; }
-      }
+      if (unsupported) continue;
+      const range = document.createRange(); range.selectNodeContents(node);
+      const rects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0);
+      const rendered = rects.length > 0 && rects.every(rect => {
+        if (rect.left < left || rect.right > right || rect.top < top || rect.bottom > bottom) return false;
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return !!hit && (hit === parent || parent.contains(hit));
+      });
       if (rendered) textParts.push(node.textContent ?? '');
     }
     const sourceText = textParts.join(' ').replace(/\s+/g, ' ').trim();
@@ -94,7 +105,13 @@ function inspectDocument({ origin, pairs }: { origin: string; pairs: readonly Do
   // All supplied evidence is validated before any value is inserted. No asynchronous gap to the native setter.
   for (const pair of pairs) {
     if (pair.value === undefined) continue;
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (pair.field instanceof HTMLSelectElement) {
+      const options = Array.from(pair.field.options).filter(option => option.value === pair.value);
+      if (options.length !== 1 || options[0]!.disabled || options[0]!.parentElement instanceof HTMLOptGroupElement &&
+          options[0]!.parentElement.disabled) throw new Error('EVIDENCE_INVALID');
+    }
+    const prototype = pair.field instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
     if (!setter) throw new Error('EVIDENCE_INVALID');
     setter.call(pair.field, pair.value);
     pair.field.dispatchEvent(new Event('input', { bubbles: true }));
@@ -123,7 +140,7 @@ export async function verifyFieldRequests(page: Page, origin: string, requests: 
       handles.push(...sources);
       if (sources.length !== 1 || !sources[0]) throw new Error('EVIDENCE_INVALID');
       // Runtime node-type validation occurs in inspectDocument before these typed handles are used.
-      const field = matches[0] as ElementHandle<HTMLInputElement>;
+      const field = matches[0] as ElementHandle<HTMLInputElement | HTMLSelectElement>;
       const source = sources[0] as ElementHandle<HTMLElement>;
       pairs.push({ field, source, request });
     }
@@ -150,26 +167,177 @@ export async function fillVerifiedField(page: Page, origin: string, field: Verif
   } catch { throw new Error('FILL_VERIFIED_FIELD_FAILED'); }
 }
 
-/** Owner-only pixels, not a model-safe redaction channel. All regular controls are opaquely masked. */
+const CONTROL_LOCATOR_SELECTOR = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+const IFRAME_LOCATOR_SELECTOR = 'iframe';
+
+async function gatherMasks(page: Page, selector: string): Promise<readonly Rect[]> {
+  // One read-only layout snapshot also includes controls in open shadow roots.
+  return page.locator(selector).evaluateAll(elements => {
+    const rects: Rect[] = [];
+    for (const element of elements) {
+      const box = element.getBoundingClientRect();
+      if (![box.x, box.y, box.width, box.height].every(Number.isFinite)) throw new Error('EVIDENCE_INVALID');
+      if (box.width > 0 && box.height > 0) rects.push({ x: box.x, y: box.y, width: box.width, height: box.height });
+    }
+    return rects;
+  });
+}
+
+function validateMaskGeometry(before: readonly Rect[], after: readonly Rect[]): void {
+  if (before.length !== after.length) {
+    throw new Error('EVIDENCE_INVALID');
+  }
+  for (let i = 0; i < before.length; i++) {
+    const b = before[i]!;
+    const a = after[i]!;
+    if (
+      Math.abs(b.x - a.x) > 1 ||
+      Math.abs(b.y - a.y) > 1 ||
+      Math.abs(b.width - a.width) > 1 ||
+      Math.abs(b.height - a.height) > 1
+    ) {
+      throw new Error('EVIDENCE_INVALID');
+    }
+  }
+}
+
+function unionRects(before: readonly Rect[], after: readonly Rect[]): readonly Rect[] {
+  const result: Rect[] = [];
+  for (let i = 0; i < before.length; i++) {
+    const b = before[i]!;
+    const a = after[i]!;
+    const minX = Math.min(b.x, a.x);
+    const minY = Math.min(b.y, a.y);
+    const maxX = Math.max(b.x + b.width, a.x + a.width);
+    const maxY = Math.max(b.y + b.height, a.y + a.height);
+    result.push(Object.freeze({ x: minX, y: minY, width: maxX - minX, height: maxY - minY }));
+  }
+  return Object.freeze(result);
+}
+
+function composeRedactionSvg(
+  viewportWidth: number,
+  viewportHeight: number,
+  controls: readonly Rect[],
+  frames: readonly Rect[]
+): Buffer {
+  if (
+    !Number.isFinite(viewportWidth) ||
+    !Number.isFinite(viewportHeight) ||
+    viewportWidth <= 0 ||
+    viewportHeight <= 0
+  ) {
+    throw new Error('EVIDENCE_INVALID');
+  }
+  const rectElements: string[] = [];
+  const targets = controls.concat(frames);
+  for (const target of targets) {
+    if (
+      !Number.isFinite(target.x) ||
+      !Number.isFinite(target.y) ||
+      !Number.isFinite(target.width) ||
+      !Number.isFinite(target.height)
+    ) {
+      throw new Error('EVIDENCE_INVALID');
+    }
+    const left = Math.max(0, Math.min(viewportWidth, Math.floor(target.x)));
+    const top = Math.max(0, Math.min(viewportHeight, Math.floor(target.y)));
+    const right = Math.max(0, Math.min(viewportWidth, Math.ceil(target.x + target.width)));
+    const bottom = Math.max(0, Math.min(viewportHeight, Math.ceil(target.y + target.height)));
+    const width = right - left;
+    const height = bottom - top;
+    if (width > 0 && height > 0) {
+      rectElements.push(`<rect x="${left}" y="${top}" width="${width}" height="${height}" fill="#000000"/>`);
+    }
+  }
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${viewportWidth}" height="${viewportHeight}">${rectElements.join('')}</svg>`,
+    'utf-8'
+  );
+}
+
+/** Owner-only pixels, not a model-safe redaction channel. All regular controls and visible iframes are opaquely masked in host memory. */
 export async function captureOwnerFrame(page: Page, origin: string, fields: readonly VerifiedField[]): Promise<OwnerFrame> {
   try {
     const canonical = httpsOrigin(origin);
-    const pairs = fields.map(field => ({ field: field.field, source: field.source, request: field.request,
-      expected: { association: field.association, sourceText: field.sourceText } }));
+    const pairs = fields.map(field => ({
+      field: field.field,
+      source: field.source,
+      request: field.request,
+      expected: { association: field.association, sourceText: field.sourceText },
+    }));
+
     const before = await page.evaluate(inspectDocument, { origin: canonical, pairs });
-    const image = await page.screenshot({ type: 'png', scale: 'css', animations: 'disabled', caret: 'hide', timeout: 5000,
-      mask: page.frames().map(frame => frame.locator('input,textarea,select,[contenteditable]:not([contenteditable="false"])')),
-      maskColor: '#000000' });
+    const [beforeControls, beforeFrames] = await Promise.all([
+      gatherMasks(page, CONTROL_LOCATOR_SELECTOR),
+      gatherMasks(page, IFRAME_LOCATOR_SELECTOR),
+    ]);
+
+    const rawBuffer = await page.screenshot({
+      type: 'png',
+      scale: 'css',
+      animations: 'allow',
+      caret: 'initial',
+      timeout: 5000,
+    });
+
     const after = await page.evaluate(inspectDocument, { origin: canonical, pairs });
-    if (before.width !== after.width || before.height !== after.height || before.scrollX !== after.scrollX || before.scrollY !== after.scrollY)
+    const [afterControls, afterFrames] = await Promise.all([
+      gatherMasks(page, CONTROL_LOCATOR_SELECTOR),
+      gatherMasks(page, IFRAME_LOCATOR_SELECTOR),
+    ]);
+
+    if (
+      before.width !== after.width ||
+      before.height !== after.height ||
+      before.scrollX !== after.scrollX ||
+      before.scrollY !== after.scrollY
+    ) {
       throw new Error('EVIDENCE_INVALID');
+    }
+
     for (const [index, first] of before.annotations.entries()) {
       const last = after.annotations[index];
       if (!last) throw new Error('EVIDENCE_INVALID');
-      for (const role of ['source', 'field'] as const) for (const property of ['x', 'y', 'width', 'height'] as const)
-        if (Math.abs(first[role][property] - last[role][property]) > 1) throw new Error('EVIDENCE_INVALID');
+      for (const role of ['source', 'field'] as const) {
+        for (const property of ['x', 'y', 'width', 'height'] as const) {
+          if (Math.abs(first[role][property] - last[role][property]) > 1) {
+            throw new Error('EVIDENCE_INVALID');
+          }
+        }
+      }
     }
-    return Object.freeze({ image: image.toString('base64'), width: before.width, height: before.height,
-      annotations: Object.freeze(before.annotations), capturedAt: Date.now() });
-  } catch { throw new Error('CAPTURE_FRAME_FAILED'); }
+
+    validateMaskGeometry(beforeControls, afterControls);
+    validateMaskGeometry(beforeFrames, afterFrames);
+
+    const imageMeta = await sharp(rawBuffer).metadata();
+    if (
+      !imageMeta.width ||
+      !imageMeta.height ||
+      imageMeta.width !== before.width ||
+      imageMeta.height !== before.height
+    ) {
+      throw new Error('EVIDENCE_INVALID');
+    }
+
+    const mergedControls = unionRects(beforeControls, afterControls);
+    const mergedFrames = unionRects(beforeFrames, afterFrames);
+    const svgBuffer = composeRedactionSvg(imageMeta.width, imageMeta.height, mergedControls, mergedFrames);
+
+    const redacted = await sharp(rawBuffer)
+      .composite([{ input: svgBuffer, top: 0, left: 0 }])
+      .png()
+      .toBuffer();
+
+    return Object.freeze({
+      image: redacted.toString('base64'),
+      width: before.width,
+      height: before.height,
+      annotations: Object.freeze(before.annotations),
+      capturedAt: Date.now(),
+    });
+  } catch {
+    throw new Error('CAPTURE_FRAME_FAILED');
+  }
 }

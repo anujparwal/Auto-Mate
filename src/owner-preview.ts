@@ -4,11 +4,14 @@ import type { Annotation, FieldRequest, PreviewPhase, VerifiedField, WorkflowObs
 import { httpsOrigin, type Layer } from './policy';
 import { LocalAuditHistory, HistoryError, type HistoryErrorCode, isValidUuid } from './audit-history';
 import { setTimeout as delay } from 'node:timers/promises';
+import type { TaskPlanner } from './task-planner';
 
 declare global {
   interface Window {
     autoMateOwnerUpdate: (data: unknown) => void;
     autoMateAuditHistory?: (command: unknown) => Promise<unknown>;
+    autoMateOwnerCommand?: (command: unknown) => Promise<void>;
+    autoMatePlanTask?: (command: unknown) => Promise<void>;
   }
 }
 
@@ -31,6 +34,7 @@ export type OwnerApprovalChoice = Readonly<{
 export type OwnerOptions = Readonly<{
   approval: OwnerApprovalSummary;
   history: LocalAuditHistory;
+  planner?: TaskPlanner;
   onApprove: (approval: OwnerApprovalChoice) => void;
   onDeny: () => void;
   onStop: () => void;
@@ -207,6 +211,10 @@ export class OwnerPreview implements WorkflowObserver {
   #approval: OwnerApprovalSummary;
   #history: LocalAuditHistory;
   #approvalError?: string;
+  #planReady = false;
+  #planning = false;
+  #plannerAbort?: AbortController;
+  #plannerError?: string;
   #closure = Promise.withResolvers<void>();
   readonly closed = this.#closure.promise;
 
@@ -214,6 +222,7 @@ export class OwnerPreview implements WorkflowObserver {
     this.#approval = approval;
     this.#history = options.history;
     this.#origin = approval.origin;
+    this.#planReady = !options.planner;
   }
 
   static async open(browser: Browser, options: OwnerOptions): Promise<OwnerPreview> {
@@ -245,13 +254,49 @@ export class OwnerPreview implements WorkflowObserver {
       });
       const page = await context.newPage();
       const preview = new OwnerPreview(page, context, options, approval);
+      await page.exposeBinding('autoMatePlanTask', async (source, raw: unknown) => {
+        if (source.page !== page || source.frame !== page.mainFrame() || new URL(page.url()).origin !== OWNER_ORIGIN)
+          throw new Error('OWNER_COMMAND_DENIED');
+        if (!options.planner || preview.#started || preview.#planReady || preview.#planning || preview.#closed || isTerminal(preview.#phase))
+          throw new Error('OWNER_COMMAND_DENIED');
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).length !== 2 ||
+          !('prompt' in raw) || typeof raw.prompt !== 'string' || !raw.prompt.trim() || raw.prompt.length > 2000 ||
+          !('allowCloud' in raw) || typeof raw.allowCloud !== 'boolean')
+          throw new Error('OWNER_COMMAND_DENIED');
+        if (options.planner.mode === 'cloud' && !raw.allowCloud)
+          throw new Error('OWNER_COMMAND_DENIED');
+        const controller = new AbortController();
+        preview.#plannerAbort = controller;
+        preview.#planning = true;
+        preview.#plannerError = undefined;
+        try {
+          await preview.#publish();
+          const plan = await options.planner.plan(raw.prompt, controller.signal);
+          if (controller.signal.aborted || preview.#closed || isTerminal(preview.#phase)) return;
+          if (plan.workflow !== 'synthetic-registration') throw new Error('PLANNER_INVALID_RESPONSE');
+          preview.#planReady = true;
+          preview.#events.push('Reviewed synthetic registration selected. Owner category approval is still required.');
+        } catch (error) {
+          if (controller.signal.aborted || preview.#closed || isTerminal(preview.#phase)) return;
+          const code = error instanceof Error ? error.message : '';
+          preview.#plannerError = code === 'UNSUPPORTED_TASK'
+            ? 'Unsupported task. This prototype supports synthetic registration only.'
+            : code === 'INVALID_TASK' ? 'Enter a task of at most 2,000 characters.'
+            : code === 'PLANNER_INVALID_RESPONSE' ? 'The model returned an invalid plan. No execution was authorized.'
+            : 'Planner unavailable. Check the local provider configuration and try again.';
+        } finally {
+          preview.#planning = false;
+          if (preview.#plannerAbort === controller) preview.#plannerAbort = undefined;
+          if (!preview.#closed) await preview.#publish().catch(() => {});
+        }
+      });
       await page.exposeBinding('autoMateOwnerCommand', async (source, rawCommand: unknown) => {
         if (source.page !== page || source.frame !== page.mainFrame() || new URL(page.url()).origin !== OWNER_ORIGIN)
           throw new Error('OWNER_COMMAND_DENIED');
         const cmd = parseOwnerCommand(rawCommand);
 
         if (cmd.action === 'approve') {
-          if (preview.#started || isTerminal(preview.#phase)) {
+          if (preview.#started || !preview.#planReady || preview.#planning || isTerminal(preview.#phase)) {
             throw new Error('OWNER_COMMAND_DENIED');
           }
           preview.#started = true;
@@ -300,6 +345,7 @@ export class OwnerPreview implements WorkflowObserver {
             throw new Error('OWNER_COMMAND_DENIED');
           }
           preview.#phase = 'denied';
+          preview.#plannerAbort?.abort();
           preview.#started = true;
           preview.#stopTimer();
           preview.#fields = [];
@@ -313,9 +359,10 @@ export class OwnerPreview implements WorkflowObserver {
           }
           await preview.#publish();
         } else if (cmd.action === 'stop') {
-          if (!preview.#started || isTerminal(preview.#phase)) {
+          if ((!preview.#started && !preview.#planning) || isTerminal(preview.#phase)) {
             throw new Error('OWNER_COMMAND_DENIED');
           }
+          preview.#plannerAbort?.abort();
           try {
             options.onStop();
           } catch {}
@@ -356,6 +403,7 @@ export class OwnerPreview implements WorkflowObserver {
       page.on('popup', popup => { void popup.close(); });
       page.on('close', () => {
         preview.#closed = true;
+        preview.#plannerAbort?.abort();
         preview.#stopTimer();
         if (!isTerminal(preview.#phase)) {
           try { options.onStop(); } catch {}
@@ -430,6 +478,7 @@ export class OwnerPreview implements WorkflowObserver {
   }
 
   async close(): Promise<void> {
+    this.#plannerAbort?.abort();
     if (!this.#closed && !isTerminal(this.#phase)) {
       try { this.options.onStop(); } catch {}
     }
@@ -465,9 +514,15 @@ export class OwnerPreview implements WorkflowObserver {
       fieldStates: this.#fieldStates,
       events: this.#events,
       approvalError: this.#approvalError,
-      canStart: !this.#started && !terminal,
+      taskEntry: this.options.planner ? {
+        mode: this.options.planner.mode,
+        model: this.options.planner.model,
+        status: this.#planning ? 'planning' : this.#planReady ? 'ready' : 'idle',
+        error: this.#plannerError,
+      } : undefined,
+      canStart: this.#planReady && !this.#planning && !this.#started && !terminal,
       canDeny: !this.#started && !terminal,
-      canStop: this.#started && !terminal,
+      canStop: (this.#planning || this.#started) && !terminal,
     } });
   }
 

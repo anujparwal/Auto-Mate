@@ -1,0 +1,51 @@
+name: Verify
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Windows Verification & Tests
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: bun x playwright install chromium
+
+      - name: TypeScript typecheck
+        run: bun run typecheck
+
+      - name: Run test suite
+        run: bun test
+
+      - name: Native DPAPI synthetic vault smoke
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File platforms/windows/smoke-test.ps1
+
+      - name: End-to-end synthetic DPAPI browser smoke
+        run: bun run smoke
+
+      - name: Build deployable site and Windows package
+        shell: powershell
+        run: ./tools/build-site.ps1

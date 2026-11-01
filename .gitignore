@@ -17,3 +17,4 @@ platforms/android/**/build/
 vault.json
 .taste-skill/
 .impeccable/review/
+dist/

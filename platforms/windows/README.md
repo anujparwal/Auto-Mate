@@ -271,3 +271,27 @@ The smoke verification exercises real native broker persist/read/list APIs using
 13. Unsupported/coerced versions, empty files, non-array collections, and duplicate legacy identities refuse writes without mutating existing data.
 
 Legacy migration validates the origin and identity already bound to each v1 secret. It preserves historical timestamp strings as found; it cannot authenticate v1 metadata that was never protected or erase earlier plaintext copies.
+
+## 7. Website Autofill and Typed Records
+
+`bun start` opens the Windows real-site owner surface. `WindowsAutofillVault` in `src/windows-vault.ts` invokes the existing normal `list`, `store-secret`, and `retrieve-fill` broker actions. Each operation still requires an actual successful Windows Hello result; there is no new native bypass or change to DPAPI entropy. `bun start --synthetic` and `bun run preview` remain isolated synthetic demonstrations.
+
+The owner surface has a separate **Vault** column usable before inspecting a website. Enter an exact HTTPS origin, record kind, ID, and values; **Authenticate & save encrypted record** uses the normal native gate. **Authenticate & list IDs** returns only origin/ID/timestamps to the owner, never decrypted values. Saving/listing does not create a browser grant or approve filling. Choosing an identity for website approval requires matching destination and kind; each field must still be explicitly checked and retrieval separately authenticated.
+
+**Lock vault & stop** clears owner drafts and identity metadata, revokes active website authority, and closes the protected browser without deleting records. Late native responses cannot unlock the UI. An already-started native write may complete after cancellation. There is no model vault API or ciphertext export; field approval permits the trusted executor to insert selected values, not return record bytes to the model. These application gates do not strengthen DPAPI against other same-user processes.
+
+New application records encode a strict typed payload **inside the encrypted `secret` string**, not as new plaintext metadata or a new outer vault version:
+
+- Login: `version: 1`, `kind: "login"`, `username`, `password`.
+- Card: `version: 1`, `kind: "card"`, `cardholder`, `cardNumber`, `expiryMonth`, `expiryYear`.
+
+Card numbers normalize spaces/hyphens, require 12–19 digits and a valid Luhn checksum, and do not imply issuer validity. Expiry is canonical month `01`–`12` and four-digit year `2000`–`2099`. Extra fields, including CVV/CVC/security codes, are refused. PINs and OTPs are not typed record fields. Record IDs remain case-sensitive and exact; application IDs are bounded to 320 characters.
+
+Existing unstructured password records remain readable as Login with `username = recordId` and the original password unchanged. Reads do not silently rewrite them. JSON-looking secrets must pass the typed schema and requested kind; malformed/wrong-kind payloads do not fall back to a raw password. Explicitly re-save an ambiguous legacy secret as a typed login after authentication.
+
+All retrieval remains bound to the authenticated inner exact origin and ID. A stored card is not globally reusable across merchants: create an encrypted entry for each intended destination. Origin selection, record ID, typed values, and native results never enter model tools. The renderer receives unlocked identity listings and bounded status only, not decrypted-record read responses. Secrets are transmitted to native code via stdin, not process arguments. Adapter output is bounded to 1 MiB stdout and 64 KiB discarded stderr; a 90-second process timeout does not guarantee an already-started write was rolled back.
+
+The separate `session-monitor.ps1` helper is used by the **real-site UI**, not independent CLI/Android operations. It registers current-session WTS notifications, checks active connection/input-desktop availability, and emits approximately 500 ms heartbeats. The parent removes authority on inactivity, malformed/exited channels, or freshness beyond 2 seconds. This is cooperative lifecycle protection, not authentication, an OS key-presence policy, or a hard real-time guarantee. Unlock does not revive previous grants.
+
+Verified here: native typed-record save/read/list and Unicode preservation in isolated DPAPI `.test` vaults; ciphertext privacy; origin/kind refusal; original generated-password adapter behavior; session-monitor startup and closed-monitor refusal. Actual real-site owner UI surfaced normal Windows Hello refusal without changing website fields. Successful Windows Hello, actual workstation lock/disconnect, and interaction with secure authentication desktops remain unverified. Do not equate the public/fictitious-data website smoke with normal-vault authentication success.
+
