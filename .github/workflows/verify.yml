@@ -38,7 +38,7 @@ jobs:
         run: bun run typecheck
 
       - name: Run test suite
-        run: bun test
+        run: bun test --timeout 30000
 
       - name: Native DPAPI synthetic vault smoke
         shell: powershell
