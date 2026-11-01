@@ -13,7 +13,7 @@ export type Association = 'label-for' | 'label-wrap' | 'aria-labelledby';
 /** Internal executor capability: must never be serialized to a model or the owner page. */
 export interface VerifiedField {
   readonly request: FieldRequest;
-  readonly field: ElementHandle<HTMLInputElement | HTMLSelectElement>;
+  readonly field: ElementHandle<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>;
   readonly source: ElementHandle<HTMLElement>;
   readonly association: Association;
   readonly sourceText: string;

@@ -40,7 +40,7 @@ async function readBounded(stream: ReadableStream<Uint8Array>, maxBytes: number,
   return keep ? new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)) : '';
 }
 
-function validateOriginAndMode(origin: string, mode: 'windows-hello' | 'synthetic', vaultPath?: string): string {
+export function validateOriginAndMode(origin: string, mode: 'windows-hello' | 'synthetic', vaultPath?: string): string {
   if (process.platform !== 'win32') throw new PolicyError('WINDOWS_REQUIRED');
   const canonical = httpsOrigin(origin);
   if (mode === 'synthetic') {
@@ -56,12 +56,12 @@ function validateOriginAndMode(origin: string, mode: 'windows-hello' | 'syntheti
   return canonical;
 }
 
-interface BrokerOptions {
+export interface BrokerOptions {
   readonly mode: 'windows-hello' | 'synthetic';
   readonly vaultPath?: string;
 }
 
-interface BrokerOutputPayload {
+export interface BrokerOutputPayload {
   readonly success: true;
   readonly authentication: string;
   readonly action: string;
@@ -70,9 +70,11 @@ interface BrokerOutputPayload {
   readonly generatedSecret?: string;
   readonly secret?: string;
   readonly entries?: readonly unknown[];
+  readonly value?: string;
+  readonly variables?: readonly unknown[];
 }
 
-async function invokeNativeBroker(options: BrokerOptions, payload: Record<string, unknown>): Promise<BrokerOutputPayload> {
+export async function invokeNativeBroker(options: BrokerOptions, payload: Record<string, unknown>): Promise<BrokerOutputPayload> {
   if (process.platform !== 'win32') throw new PolicyError('WINDOWS_REQUIRED');
 
   const scriptPath = resolve(import.meta.dir, '../platforms/windows/vault.ps1');
@@ -162,8 +164,9 @@ async function invokeNativeBroker(options: BrokerOptions, payload: Record<string
     generatedSecret: 'generatedSecret' in result && typeof result.generatedSecret === 'string' ? result.generatedSecret : undefined,
     secret: 'secret' in result && typeof result.secret === 'string' ? result.secret : undefined,
     entries: 'entries' in result && Array.isArray(result.entries) ? result.entries : undefined,
+    value: 'value' in result && typeof result.value === 'string' ? result.value : undefined,
+    variables: 'variables' in result && Array.isArray(result.variables) ? result.variables : undefined,
   };
-
   return verified;
 }
 
@@ -311,3 +314,5 @@ export class WindowsAutofillVault implements AutofillVault {
     return decodeVaultRecord(result.secret, kind, recordId);
   }
 }
+
+export { WindowsInformationVault } from './information-vault';

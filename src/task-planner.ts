@@ -1,23 +1,17 @@
-export type PlannerMode = 'reviewed' | 'local' | 'cloud';
+import {
+  type PlannerMode,
+  type PlannerConfig,
+  type PlannerErrorCode,
+  PlannerError,
+  validatePlannerConfig,
+  parsePlannerConfigFromEnv,
+  requestChatCompletion,
+} from './model-client';
 
 export type TaskPlan = Readonly<{ workflow: 'synthetic-registration' }>;
 
-export interface PlannerConfig {
-  mode: PlannerMode;
-  endpoint?: string;
-  model?: string;
-  apiKey?: string;
-}
-
-export type PlannerErrorCode =
-  | 'INVALID_TASK'
-  | 'UNSUPPORTED_TASK'
-  | 'PLANNER_UNAVAILABLE'
-  | 'PLANNER_INVALID_RESPONSE'
-  | 'PLANNER_CONFIGURATION';
-
-export class TaskPlannerError extends Error {
-  constructor(public override readonly message: PlannerErrorCode) {
+export class TaskPlannerError extends PlannerError {
+  constructor(message: PlannerErrorCode) {
     super(message);
     this.name = 'TaskPlannerError';
   }
@@ -41,105 +35,41 @@ export class TaskPlanner {
     'Never include explanations, markdown, or extra JSON fields. You do not determine origins, credentials, selectors, or policies.';
 
   constructor(config?: PlannerConfig) {
-    const mode = config?.mode ?? 'reviewed';
-    if (mode !== 'reviewed' && mode !== 'local' && mode !== 'cloud') {
-      throw new TaskPlannerError('PLANNER_CONFIGURATION');
-    }
-    this.mode = mode;
-
-    if (mode === 'reviewed') {
-      this.model = config?.model;
-      this.#endpoint = undefined;
-      this.#apiKey = undefined;
-      return;
-    }
-
-    const rawEndpoint = config?.endpoint;
-    if (!rawEndpoint || typeof rawEndpoint !== 'string' || rawEndpoint.trim().length === 0) {
-      throw new TaskPlannerError('PLANNER_CONFIGURATION');
-    }
-
-    const rawModel = config?.model;
-    if (!rawModel || typeof rawModel !== 'string' || rawModel.trim().length === 0) {
-      throw new TaskPlannerError('PLANNER_CONFIGURATION');
-    }
-    this.model = rawModel.trim();
-
-    let parsedUrl: URL;
+    let validated;
     try {
-      parsedUrl = new URL(rawEndpoint.trim());
-    } catch {
-      throw new TaskPlannerError('PLANNER_CONFIGURATION');
+      validated = validatePlannerConfig(config);
+    } catch (err) {
+      if (err instanceof PlannerError) {
+        throw new TaskPlannerError(err.message);
+      }
+      throw err;
     }
 
-    if (
-      parsedUrl.username !== '' ||
-      parsedUrl.password !== '' ||
-      parsedUrl.search !== '' ||
-      parsedUrl.hash !== ''
-    ) {
-      throw new TaskPlannerError('PLANNER_CONFIGURATION');
-    }
+    this.mode = validated.mode;
+    this.model = validated.model;
+    this.#endpoint = validated.endpoint;
+    this.#apiKey = validated.apiKey;
+  }
 
-    if (mode === 'cloud') {
-      if (parsedUrl.protocol !== 'https:') {
-        throw new TaskPlannerError('PLANNER_CONFIGURATION');
+  static fromEnvironment(
+    env: Record<string, string | undefined> = process.env
+  ): TaskPlanner {
+    try {
+      const config = parsePlannerConfigFromEnv(env);
+      return new TaskPlanner(config);
+    } catch (err) {
+      if (err instanceof PlannerError) {
+        throw new TaskPlannerError(err.message);
       }
-      const rawApiKey = config?.apiKey;
-      if (!rawApiKey || typeof rawApiKey !== 'string' || rawApiKey.trim().length === 0) {
-        throw new TaskPlannerError('PLANNER_CONFIGURATION');
-      }
-      this.#apiKey = rawApiKey.trim();
-      this.#endpoint = parsedUrl.href;
-    } else {
-      // mode === 'local'
-      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-        throw new TaskPlannerError('PLANNER_CONFIGURATION');
-      }
-      const hostname = parsedUrl.hostname.toLowerCase();
-      const isLoopback =
-        hostname === 'localhost' ||
-        hostname === '127.0.0.1' ||
-        hostname === '[::1]' ||
-        hostname === '::1';
-      if (!isLoopback) {
-        throw new TaskPlannerError('PLANNER_CONFIGURATION');
-      }
-
-      if (config?.apiKey !== undefined) {
-        if (typeof config.apiKey !== 'string') {
-          throw new TaskPlannerError('PLANNER_CONFIGURATION');
-        }
-        const trimmed = config.apiKey.trim();
-        this.#apiKey = trimmed.length > 0 ? trimmed : undefined;
-      } else {
-        this.#apiKey = undefined;
-      }
-      this.#endpoint = parsedUrl.href;
+      throw err;
     }
   }
 
-  static fromEnvironment(env: Record<string, string | undefined> = process.env): TaskPlanner {
-    const rawMode = env.AUTOMATE_PLANNER?.trim();
-    let mode: PlannerMode = 'reviewed';
-    if (rawMode) {
-      if (rawMode === 'reviewed' || rawMode === 'local' || rawMode === 'cloud') {
-        mode = rawMode;
-      } else {
-        throw new TaskPlannerError('PLANNER_CONFIGURATION');
-      }
-    }
-
-    const endpoint = env.AUTOMATE_MODEL_ENDPOINT?.trim();
-    const model = env.AUTOMATE_MODEL?.trim();
-    const apiKey = env.AUTOMATE_MODEL_API_KEY?.trim();
-
-    return new TaskPlanner({
-      mode,
-      endpoint: endpoint || undefined,
-      model: model || undefined,
-      apiKey: apiKey || undefined,
-    });
+  toJSON(): Record<string, unknown> {
+    return {
+      mode: this.mode,
+      ...(this.model ? { model: this.model } : {}),
+    };
   }
 
   async plan(prompt: string, signal?: AbortSignal): Promise<TaskPlan> {
@@ -166,133 +96,31 @@ export class TaskPlanner {
     return this.#requestChatCompletion(prompt, signal);
   }
 
-  async #requestChatCompletion(prompt: string, signal?: AbortSignal): Promise<TaskPlan> {
-    const timeoutSignal = AbortSignal.timeout(TaskPlanner.#TIMEOUT_MS);
-    const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-
-    const requestBody = JSON.stringify({
-      model: this.model,
-      messages: [
-        { role: 'system', content: TaskPlanner.#SYSTEM_PROMPT },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0,
-    });
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-    if (this.#apiKey) {
-      headers['Authorization'] = `Bearer ${this.#apiKey}`;
-    }
-
-    let response: Response;
+  async #requestChatCompletion(
+    prompt: string,
+    signal?: AbortSignal
+  ): Promise<TaskPlan> {
+    let content: string;
     try {
-      response = await fetch(this.#endpoint!, {
-        method: 'POST',
-        headers,
-        body: requestBody,
-        redirect: 'manual',
-        signal: combinedSignal,
+      content = await requestChatCompletion({
+        endpoint: this.#endpoint!,
+        apiKey: this.#apiKey,
+        model: this.model!,
+        messages: [
+          { role: 'system', content: TaskPlanner.#SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0,
+        signal,
+        timeoutMs: TaskPlanner.#TIMEOUT_MS,
+        maxStreamBytes: TaskPlanner.#MAX_STREAM_BYTES,
+        maxContentChars: TaskPlanner.#MAX_CONTENT_CHARS,
       });
-    } catch {
-      throw new TaskPlannerError('PLANNER_UNAVAILABLE');
-    }
-
-    if (
-      (response.status >= 300 && response.status < 400) ||
-      response.redirected ||
-      response.type === 'opaqueredirect'
-    ) {
-      await response.body?.cancel().catch(() => {});
-      throw new TaskPlannerError('PLANNER_INVALID_RESPONSE');
-    }
-
-    if (response.status !== 200) {
-      await response.body?.cancel().catch(() => {});
-      if (response.status >= 400) {
-        throw new TaskPlannerError('PLANNER_UNAVAILABLE');
-      }
-      throw new TaskPlannerError('PLANNER_INVALID_RESPONSE');
-    }
-
-    if (!response.body) {
-      throw new TaskPlannerError('PLANNER_INVALID_RESPONSE');
-    }
-
-    const reader = response.body.getReader();
-    let totalBytes = 0;
-    const chunks: Uint8Array[] = [];
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          totalBytes += value.byteLength;
-          if (totalBytes > TaskPlanner.#MAX_STREAM_BYTES) {
-            await reader.cancel().catch(() => {});
-            throw new TaskPlannerError('PLANNER_INVALID_RESPONSE');
-          }
-          chunks.push(value);
-        }
-      }
     } catch (err) {
-      if (err instanceof TaskPlannerError) throw err;
-      throw new TaskPlannerError('PLANNER_UNAVAILABLE');
-    } finally {
-      reader.releaseLock();
-    }
-    if (combinedSignal.aborted) throw new TaskPlannerError('PLANNER_UNAVAILABLE');
-
-    const bodyBuffer = new Uint8Array(totalBytes);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bodyBuffer.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-
-    let text: string;
-    try {
-      text = new TextDecoder('utf-8', { fatal: true }).decode(bodyBuffer);
-    } catch {
-      throw new TaskPlannerError('PLANNER_INVALID_RESPONSE');
-    }
-
-    let payload: unknown;
-    try {
-      payload = JSON.parse(text);
-    } catch {
-      throw new TaskPlannerError('PLANNER_INVALID_RESPONSE');
-    }
-
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-      throw new TaskPlannerError('PLANNER_INVALID_RESPONSE');
-    }
-
-    const choices = (payload as Record<string, unknown>).choices;
-    if (!Array.isArray(choices) || choices.length === 0) {
-      throw new TaskPlannerError('PLANNER_INVALID_RESPONSE');
-    }
-
-    const firstChoice = choices[0];
-    if (!firstChoice || typeof firstChoice !== 'object' || Array.isArray(firstChoice)) {
-      throw new TaskPlannerError('PLANNER_INVALID_RESPONSE');
-    }
-
-    const message = (firstChoice as Record<string, unknown>).message;
-    if (!message || typeof message !== 'object' || Array.isArray(message)) {
-      throw new TaskPlannerError('PLANNER_INVALID_RESPONSE');
-    }
-
-    const content = (message as Record<string, unknown>).content;
-    if (typeof content !== 'string') {
-      throw new TaskPlannerError('PLANNER_INVALID_RESPONSE');
-    }
-
-    if (content.length > TaskPlanner.#MAX_CONTENT_CHARS) {
-      throw new TaskPlannerError('PLANNER_INVALID_RESPONSE');
+      if (err instanceof PlannerError) {
+        throw new TaskPlannerError(err.message);
+      }
+      throw err;
     }
 
     const trimmedContent = content.trim();
@@ -316,7 +144,6 @@ export class TaskPlanner {
     if (keys.length !== 1 || keys[0] !== 'workflow') {
       throw new TaskPlannerError('PLANNER_INVALID_RESPONSE');
     }
-
 
     const workflow = (parsedContent as Record<string, unknown>).workflow;
     if (workflow === 'synthetic-registration') {

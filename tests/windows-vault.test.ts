@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { SYNTHETIC_VAULT_ROOT, WindowsAutofillVault, WindowsPasswordStore } from '../src/windows-vault';
+import { SYNTHETIC_VAULT_ROOT, WindowsAutofillVault, WindowsPasswordStore, invokeNativeBroker } from '../src/windows-vault';
 import type { CardRecord, LoginRecord } from '../src/autofill-contract';
 
 const isWindows = process.platform === 'win32';
@@ -241,6 +241,69 @@ windowsSuite('WindowsAutofillVault & WindowsPasswordStore (Native DPAPI Syntheti
     ]);
     if (exitCode !== 0) throw new Error('Synthetic temp-root fixture failed: ' + stderr);
     expect(JSON.parse(stdout)).toEqual(record);
+  }, nativeIntegrationTimeoutMs);
+
+  test('native broker handles catalog, save-variable, resolve-variable, and authenticate actions', async () => {
+    if (!isWindows) return;
+    const origin = 'https://broker-test.example.test';
+
+    // 1. Authenticate action
+    const authRes = await invokeNativeBroker(
+      { mode: 'synthetic', vaultPath },
+      { action: 'authenticate', origin },
+    );
+    expect(authRes.success).toBe(true);
+    expect(authRes.action).toBe('authenticate');
+    expect(authRes.authentication).toBe('synthetic-isolated');
+
+    // 2. Save variable action
+    const saveRes = await invokeNativeBroker(
+      { mode: 'synthetic', vaultPath },
+      {
+        action: 'save-variable',
+        origin,
+        targetOrigin: origin,
+        name: 'ApiKey',
+        description: 'Test API key',
+        value: 'secret-key-12345',
+        kind: 'text',
+        scope: 'site',
+      },
+    );
+    expect(saveRes.success).toBe(true);
+    expect(saveRes.action).toBe('save-variable');
+    expect(saveRes.recordId).toBe('var:ApiKey');
+
+    // 3. Catalog action
+    const catRes = await invokeNativeBroker(
+      { mode: 'synthetic', vaultPath },
+      { action: 'catalog' },
+    );
+    expect(catRes.success).toBe(true);
+    expect(catRes.action).toBe('catalog');
+    expect(Array.isArray(catRes.variables)).toBe(true);
+    const found = (catRes.variables as Array<{ name: string; description: string; kind: string }>).find(
+      (v) => v.name === 'ApiKey',
+    );
+    expect(found).toBeDefined();
+    expect(found?.description).toBe('Test API key');
+    expect(found?.kind).toBe('text');
+
+    // 4. Resolve variable action
+    const resolveRes = await invokeNativeBroker(
+      { mode: 'synthetic', vaultPath },
+      {
+        action: 'resolve-variable',
+        origin,
+        sourceOrigin: origin,
+        recordId: 'var:ApiKey',
+        expectedKind: 'text',
+        expectedScope: 'site',
+      },
+    );
+    expect(resolveRes.success).toBe(true);
+    expect(resolveRes.action).toBe('resolve-variable');
+    expect(resolveRes.value).toBe('secret-key-12345');
   }, nativeIntegrationTimeoutMs);
 
 });

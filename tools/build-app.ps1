@@ -90,7 +90,7 @@ if (-not (Test-Path -LiteralPath $packageJsonPath)) { throw 'package.json missin
 $pkg = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
 $version = [string]$pkg.version
 if (-not $version) { throw 'Package version not defined in package.json.' }
-$expectedVersion = '0.1.0-preview.1'
+$expectedVersion = '0.1.0-preview.2'
 if ($version -ne $expectedVersion) {
     throw ('Expected version ' + $expectedVersion + ' in package.json, found ' + $version)
 }

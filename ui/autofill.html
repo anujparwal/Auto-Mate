@@ -33,7 +33,7 @@
           <input id="vault-origin" type="url" required maxlength="2048" placeholder="https://example.com" autocomplete="off">
           <button id="vault-use-origin" class="compact-button" type="button" disabled>Use inspected site</button>
           <label for="vault-kind">Record type</label>
-          <select id="vault-kind"><option value="login">Login</option><option value="card">Payment card</option></select>
+          <select id="vault-kind"><option value="login">Login</option><option value="card">Payment card</option><option value="variable">Named variable</option></select>
           <label for="vault-record-id">Record ID</label>
           <input id="vault-record-id" required maxlength="320" autocomplete="off" placeholder="A name you recognize">
           <div id="login-fields" class="vault-values">
@@ -51,6 +51,30 @@
               <label>Expiry month<input id="save-month" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="MM"></label>
               <label>Expiry year<input id="save-year" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="YYYY"></label>
             </div>
+          </div>
+          <div id="variable-fields" class="vault-values" hidden>
+            <label for="save-var-name">Variable name</label>
+            <input id="save-var-name" maxlength="80" autocomplete="off" placeholder="e.g. Legal Name">
+            <label for="save-var-desc">Description (helps the agent map it)</label>
+            <input id="save-var-desc" maxlength="500" autocomplete="off" placeholder="e.g. Full legal first and last name for registrations">
+            <label for="save-var-val">Value (stored encrypted, never sent to AI)</label>
+            <input id="save-var-val" maxlength="4096" autocomplete="off" placeholder="Value">
+            <label for="save-var-kind">Data kind</label>
+            <select id="save-var-kind">
+              <option value="text">General text</option>
+              <option value="username">Username</option>
+              <option value="password">Password</option>
+              <option value="email">Email</option>
+              <option value="tel">Phone</option>
+              <option value="url">URL</option>
+              <option value="date">Date</option>
+              <option value="number">Number</option>
+            </select>
+            <label for="save-var-scope">Scope</label>
+            <select id="save-var-scope">
+              <option value="profile">Shared profile (reusable across sites)</option>
+              <option value="site">Site-bound (restricted to allowed origin)</option>
+            </select>
           </div>
           <button id="save-record" class="primary" type="submit" disabled>Authenticate &amp; save encrypted record</button>
         </form>
@@ -71,7 +95,7 @@
           <h2 id="website-heading">1. Inspect a website · No vault access</h2>
           <form id="inspect-form" class="autofill-grid">
             <label>HTTPS page URL<input id="website-url" type="url" required maxlength="2048" value="https://the-internet.herokuapp.com/login" autocomplete="off"></label>
-            <label>Record type<select id="record-kind"><option value="login">Login</option><option value="card">Payment card</option></select></label>
+            <label>Record type<select id="record-kind"><option value="login">Login</option><option value="card">Payment card</option><option value="information">All form fields (Agent assisted)</option></select></label>
             <button id="inspect" type="submit">Inspect website</button>
           </form>
           <div class="task-plan-actions"><button id="example-login" type="button">Public login test</button><button id="example-card" type="button">Public card test</button></div>
@@ -79,6 +103,48 @@
         </section>
         <section class="approval-card" aria-labelledby="approval-heading">
           <h2 id="approval-heading">2. Approve individual disclosures</h2>
+          <div id="information-banner" class="information-banner" hidden>
+            <p class="vault-boundary"><strong>Agent boundary:</strong> The agent can see all variable names and descriptions in your vault to map which variable goes into what field. <strong>Secret values are NEVER sent to the agent.</strong> Whenever info is missing, a dialogue box will prompt you.</p>
+            <div class="task-plan-actions">
+              <button id="info-load-catalog" type="button">1. Authenticate &amp; list vault variables</button>
+            </div>
+            <details id="info-catalog-details" class="info-catalog-details" hidden>
+              <summary>Vault variables visible to Agent (<span id="info-catalog-count">0</span> variables)</summary>
+              <div id="info-catalog-list" class="info-catalog-list"></div>
+            </details>
+            <div id="info-plan-controls" class="task-plan-actions" hidden>
+              <label id="info-consent-row" class="category-choice" hidden>
+                <input id="info-consent" type="checkbox">
+                <span>I consent to sending field labels and vault variable names/descriptions to the configured model.</span>
+              </label>
+              <button id="info-plan" class="primary" type="button">2. Ask Agent to map fields</button>
+            </div>
+          </div>
+          <dialog id="info-dialog" class="approval-card info-dialog">
+            <form id="info-dialog-form" method="dialog">
+              <h3 id="dialog-title">Agent requested information</h3>
+              <p id="dialog-prompt" class="approval-notice"></p>
+              <div id="dialog-input-container"></div>
+              <div class="dialog-save-section">
+                <label class="category-choice"><input id="dialog-save-check" type="checkbox"><span>Save this to vault for future use</span></label>
+                <div id="dialog-save-details" class="dialog-save-details" hidden>
+                  <label for="dialog-var-name">Variable name</label>
+                  <input id="dialog-var-name" maxlength="80" placeholder="e.g. Preferred Username">
+                  <label for="dialog-var-desc">Description</label>
+                  <input id="dialog-var-desc" maxlength="500" placeholder="e.g. Username chosen for this account">
+                  <label for="dialog-var-scope">Scope</label>
+                  <select id="dialog-var-scope">
+                    <option value="profile">Shared profile</option>
+                    <option value="site">Site-bound (this site only)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="task-plan-actions dialog-actions">
+                <button id="dialog-provide" class="primary" type="submit">Provide to Agent</button>
+                <button id="dialog-skip" type="button">Skip this field</button>
+              </div>
+            </form>
+          </dialog>
           <label class="approval-label" for="record-id">Vault record ID for this destination</label>
           <input id="record-id" maxlength="320" autocomplete="off" placeholder="Enter a known ID or use the Vault column" disabled>
           <p id="record-selection-status" class="approval-notice">Selecting a record ID does not approve any disclosure.</p>

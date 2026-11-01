@@ -1195,6 +1195,388 @@ function Invoke-Broker {
             return
         }
 
+        "catalog" {
+            if (-not $Synthetic) {
+                Invoke-WindowsHelloAuth -Message "Auto-Mate Broker: Catalog vault variables"
+            }
+
+            $vaultFilePath = Resolve-VaultFilePath -PathInput $CustomVaultPath -Synthetic:$Synthetic
+            $vaultData = Load-VaultData -FilePath $vaultFilePath -AllowMissing -Synthetic:$Synthetic
+
+            $catalogItems = New-Object System.Collections.ArrayList
+            if ($null -ne $vaultData -and $null -ne $vaultData.records) {
+                foreach ($r in $vaultData.records) {
+                    $rawSecret = [string]$r.secret
+                    $parsed = $null
+                    $isJson = $false
+                    try {
+                        $parsed = $rawSecret | ConvertFrom-Json
+                        if ($parsed -is [System.Management.Automation.PSCustomObject]) {
+                            $isJson = $true
+                        }
+                    } catch {}
+
+                    if ($isJson) {
+                        if ($parsed.PSObject.Properties["type"] -and $parsed.type -eq "variable") {
+                            $catalogItems.Add([ordered]@{
+                                recordId    = [string]$r.recordId
+                                origin      = [string]$r.origin
+                                name        = [string]$parsed.name
+                                description = [string]$parsed.description
+                                kind        = [string]$parsed.kind
+                                scope       = [string]$parsed.scope
+                            }) | Out-Null
+                        } elseif ($parsed.PSObject.Properties["kind"] -and $parsed.kind -eq "login") {
+                            $catalogItems.Add([ordered]@{
+                                recordId    = [string]$r.recordId
+                                origin      = [string]$r.origin
+                                fieldKey    = "username"
+                                name        = "Username ($($r.recordId))"
+                                description = "Username for $($r.origin) ($($r.recordId))"
+                                kind        = "username"
+                                scope       = "site"
+                            }) | Out-Null
+                            $catalogItems.Add([ordered]@{
+                                recordId    = [string]$r.recordId
+                                origin      = [string]$r.origin
+                                fieldKey    = "password"
+                                name        = "Password ($($r.recordId))"
+                                description = "Password for $($r.origin) ($($r.recordId))"
+                                kind        = "password"
+                                scope       = "site"
+                            }) | Out-Null
+                        } elseif ($parsed.PSObject.Properties["kind"] -and $parsed.kind -eq "card") {
+                            $catalogItems.Add([ordered]@{
+                                recordId    = [string]$r.recordId
+                                origin      = [string]$r.origin
+                                fieldKey    = "cardholder"
+                                name        = "Cardholder ($($r.recordId))"
+                                description = "Cardholder name for $($r.origin) ($($r.recordId))"
+                                kind        = "cardholder"
+                                scope       = "site"
+                            }) | Out-Null
+                            $catalogItems.Add([ordered]@{
+                                recordId    = [string]$r.recordId
+                                origin      = [string]$r.origin
+                                fieldKey    = "cardNumber"
+                                name        = "Card number ($($r.recordId))"
+                                description = "Credit card number for $($r.origin) ($($r.recordId))"
+                                kind        = "cardNumber"
+                                scope       = "site"
+                            }) | Out-Null
+                            $catalogItems.Add([ordered]@{
+                                recordId    = [string]$r.recordId
+                                origin      = [string]$r.origin
+                                fieldKey    = "expiryMonth"
+                                name        = "Expiry month ($($r.recordId))"
+                                description = "Card expiration month for $($r.origin) ($($r.recordId))"
+                                kind        = "expiryMonth"
+                                scope       = "site"
+                            }) | Out-Null
+                            $catalogItems.Add([ordered]@{
+                                recordId    = [string]$r.recordId
+                                origin      = [string]$r.origin
+                                fieldKey    = "expiryYear"
+                                name        = "Expiry year ($($r.recordId))"
+                                description = "Card expiration year for $($r.origin) ($($r.recordId))"
+                                kind        = "expiryYear"
+                                scope       = "site"
+                            }) | Out-Null
+                        }
+                    } else {
+                        # Legacy password record
+                        $catalogItems.Add([ordered]@{
+                            recordId    = [string]$r.recordId
+                            origin      = [string]$r.origin
+                            fieldKey    = ""
+                            name        = "Password ($($r.recordId))"
+                            description = "Stored password for $($r.origin) ($($r.recordId))"
+                            kind        = "password"
+                            scope       = "site"
+                        }) | Out-Null
+                    }
+                }
+            }
+
+            $res = [ordered]@{
+                success        = $true
+                authentication = $authMode
+                action         = "catalog"
+                variables      = $catalogItems
+            }
+            [System.Console]::Out.WriteLine(($res | ConvertTo-Json -Depth 10 -Compress))
+            return
+        }
+
+        "save-variable" {
+            if ([string]::IsNullOrWhiteSpace($req.origin)) { throw "Missing 'origin' parameter in broker request." }
+            if ([string]::IsNullOrWhiteSpace($req.name)) { throw "Missing 'name' parameter in broker request." }
+            if ([string]::IsNullOrWhiteSpace($req.description)) { throw "Missing 'description' parameter in broker request." }
+            if ($null -eq $req.value -or [string]$req.value -eq "") { throw "Missing 'value' parameter in broker request." }
+            if ([string]::IsNullOrWhiteSpace($req.kind)) { throw "Missing 'kind' parameter in broker request." }
+            if ([string]::IsNullOrWhiteSpace($req.scope)) { throw "Missing 'scope' parameter in broker request." }
+
+            $canonicalOrigin = Get-CanonicalOrigin -OriginInput $req.origin -Synthetic:$Synthetic
+            $targetOrigin = if ($req.PSObject.Properties["targetOrigin"] -and -not [string]::IsNullOrWhiteSpace($req.targetOrigin)) {
+                Get-CanonicalOrigin -OriginInput $req.targetOrigin -Synthetic:$Synthetic
+            } else {
+                $canonicalOrigin
+            }
+
+            $name = [string]$req.name.Trim()
+            $desc = [string]$req.description.Trim()
+            $val = [string]$req.value
+            $kind = [string]$req.kind.Trim()
+            $scope = [string]$req.scope.Trim()
+
+            if ($name.Length -gt 80) { throw "Variable name exceeds maximum length of 80 characters." }
+            if ($desc.Length -gt 500) { throw "Variable description exceeds maximum length of 500 characters." }
+            if ($val.Length -gt 4096) { throw "Variable value exceeds maximum length of 4096 characters." }
+
+            $validKinds = @("text", "email", "tel", "url", "username", "password", "date", "number")
+            if ($validKinds -cnotcontains $kind) { throw "Invalid variable kind '$kind'." }
+
+            if ($scope -ne "profile" -and $scope -ne "site") { throw "Invalid variable scope '$scope'." }
+
+            $profileOrigin = if ($Synthetic) { "https://profile.auto-mate.test" } else { "https://profile.auto-mate.invalid" }
+
+            if ($scope -eq "profile") {
+                if ($kind -eq "username" -or $kind -eq "password") {
+                    throw "Credentials (username/password) cannot be stored in profile scope."
+                }
+                if ($canonicalOrigin -ne $profileOrigin) {
+                    throw "Profile variable origin must be canonical profile origin."
+                }
+            } else {
+                if ($canonicalOrigin -eq $profileOrigin) {
+                    throw "Site variable cannot be stored in profile origin."
+                }
+            }
+
+            $recordId = if ($req.PSObject.Properties["recordId"] -and -not [string]::IsNullOrWhiteSpace($req.recordId)) {
+                [string]$req.recordId
+            } else {
+                "var:" + $name
+            }
+
+            if (-not $Synthetic) {
+                Invoke-WindowsHelloAuth -Message "Auto-Mate Broker: Save variable for $targetOrigin"
+            }
+
+            $vaultFilePath = Resolve-VaultFilePath -PathInput $CustomVaultPath -Synthetic:$Synthetic
+            Invoke-WithVaultMutex {
+                $vaultData = Load-VaultData -FilePath $vaultFilePath -AllowMissing -Synthetic:$Synthetic
+                $existingIndex = -1
+                for ($i = 0; $i -lt $vaultData.records.Count; $i++) {
+                    $r = $vaultData.records[$i]
+                    if ($r.origin -ceq $canonicalOrigin -and $r.recordId -ceq $recordId) {
+                        $existingIndex = $i
+                        break
+                    }
+                }
+
+                if ($existingIndex -ge 0) {
+                    $existingSecret = $vaultData.records[$existingIndex].secret
+                    $isVar = $false
+                    try {
+                        $parsed = $existingSecret | ConvertFrom-Json
+                        if ($parsed.PSObject.Properties["type"] -and $parsed.type -eq "variable") {
+                            $isVar = $true
+                        }
+                    } catch {}
+
+                    if (-not $isVar) {
+                        throw "Cannot overwrite unrelated typed record with named variable."
+                    }
+                }
+
+                $varObj = [ordered]@{
+                    version     = 1
+                    type        = "variable"
+                    name        = $name
+                    description = $desc
+                    kind        = $kind
+                    scope       = $scope
+                    value       = $val
+                }
+                $varSecret = $varObj | ConvertTo-Json -Depth 5 -Compress
+
+                $now = [System.DateTime]::UtcNow.ToString("o")
+                $createdAt = $now
+                if ($existingIndex -ge 0) {
+                    $createdAt = $vaultData.records[$existingIndex].createdAt
+                }
+
+                $recordItem = [PSCustomObject]@{
+                    origin    = $canonicalOrigin
+                    recordId  = $recordId
+                    secret    = $varSecret
+                    createdAt = $createdAt
+                    updatedAt = $now
+                }
+
+                if ($existingIndex -ge 0) {
+                    $vaultData.records[$existingIndex] = $recordItem
+                } else {
+                    $vaultData.records.Add($recordItem) | Out-Null
+                }
+
+                Save-VaultData -FilePath $vaultFilePath -VaultData $vaultData -Synthetic:$Synthetic
+            }
+
+            $res = [ordered]@{
+                success        = $true
+                authentication = $authMode
+                action         = "save-variable"
+                origin         = $canonicalOrigin
+                recordId       = $recordId
+            }
+            [System.Console]::Out.WriteLine(($res | ConvertTo-Json -Depth 5 -Compress))
+            return
+        }
+
+        "resolve-variable" {
+            if ([string]::IsNullOrWhiteSpace($req.origin)) { throw "Missing 'origin' parameter in broker request." }
+            if ([string]::IsNullOrWhiteSpace($req.sourceOrigin)) { throw "Missing 'sourceOrigin' parameter in broker request." }
+            if ([string]::IsNullOrWhiteSpace($req.recordId)) { throw "Missing 'recordId' parameter in broker request." }
+            if ([string]::IsNullOrWhiteSpace($req.expectedKind)) { throw "Missing 'expectedKind' parameter in broker request." }
+            if ([string]::IsNullOrWhiteSpace($req.expectedScope)) { throw "Missing 'expectedScope' parameter in broker request." }
+
+            $targetOrigin = Get-CanonicalOrigin -OriginInput $req.origin -Synthetic:$Synthetic
+            $sourceOrigin = Get-CanonicalOrigin -OriginInput $req.sourceOrigin -Synthetic:$Synthetic
+            $recordId = [string]$req.recordId
+            $fieldKey = if ($req.PSObject.Properties["fieldKey"] -and -not [string]::IsNullOrWhiteSpace($req.fieldKey)) {
+                [string]$req.fieldKey
+            } else {
+                $null
+            }
+            $expectedKind = [string]$req.expectedKind
+            $expectedScope = [string]$req.expectedScope
+
+            $profileOrigin = if ($Synthetic) { "https://profile.auto-mate.test" } else { "https://profile.auto-mate.invalid" }
+
+            if ($expectedScope -eq "profile") {
+                if ($expectedKind -eq "username" -or $expectedKind -eq "password") {
+                    throw "Credentials cannot be profile scope."
+                }
+                if ($sourceOrigin -ne $profileOrigin) {
+                    throw "Profile variable source origin must be canonical profile origin."
+                }
+            } elseif ($expectedScope -eq "site") {
+                if ($sourceOrigin -ne $targetOrigin) {
+                    throw "Cross-origin denied: site variable cannot be resolved for a different origin."
+                }
+            } else {
+                throw "Invalid expectedScope '$expectedScope'."
+            }
+
+            if (-not $Synthetic) {
+                Invoke-WindowsHelloAuth -Message "Auto-Mate Broker: Resolve variable for $targetOrigin"
+            }
+
+            $rawSecret = Invoke-WithVaultMutex {
+                Get-VaultRecord -Origin $sourceOrigin -RecordId $recordId -CustomVaultPath $CustomVaultPath -Synthetic:$Synthetic
+            }
+
+            $val = $null
+            $parsed = $null
+            $isJson = $false
+            try {
+                $parsed = $rawSecret | ConvertFrom-Json
+                if ($parsed -is [System.Management.Automation.PSCustomObject]) {
+                    $isJson = $true
+                }
+            } catch {}
+
+            if ($isJson) {
+                if ($parsed.PSObject.Properties["type"] -and $parsed.type -eq "variable") {
+                    if ($parsed.kind -ne $expectedKind) {
+                        throw "Variable kind mismatch: stored '$($parsed.kind)', expected '$expectedKind'."
+                    }
+                    if ($parsed.scope -ne $expectedScope) {
+                        throw "Variable scope mismatch: stored '$($parsed.scope)', expected '$expectedScope'."
+                    }
+                    $val = [string]$parsed.value
+                } elseif ($parsed.PSObject.Properties["kind"] -and $parsed.kind -eq "login") {
+                    if ($expectedScope -ne "site" -or $sourceOrigin -ne $targetOrigin) {
+                        throw "Cross-origin denied for login record."
+                    }
+                    if ($fieldKey -eq "username") {
+                        if ($expectedKind -ne "username") { throw "Kind mismatch for login username." }
+                        $val = [string]$parsed.username
+                    } elseif ($fieldKey -eq "password") {
+                        if ($expectedKind -ne "password") { throw "Kind mismatch for login password." }
+                        $val = [string]$parsed.password
+                    } else {
+                        throw "Invalid fieldKey '$fieldKey' for login record."
+                    }
+                } elseif ($parsed.PSObject.Properties["kind"] -and $parsed.kind -eq "card") {
+                    if ($expectedScope -ne "site" -or $sourceOrigin -ne $targetOrigin) {
+                        throw "Cross-origin denied for card record."
+                    }
+                    if ($fieldKey -eq "cardholder") {
+                        if ($expectedKind -ne "cardholder") { throw "Kind mismatch for cardholder." }
+                        $val = [string]$parsed.cardholder
+                    } elseif ($fieldKey -eq "cardNumber") {
+                        if ($expectedKind -ne "cardNumber") { throw "Kind mismatch for cardNumber." }
+                        $val = [string]$parsed.cardNumber
+                    } elseif ($fieldKey -eq "expiryMonth") {
+                        if ($expectedKind -ne "expiryMonth") { throw "Kind mismatch for expiryMonth." }
+                        $val = [string]$parsed.expiryMonth
+                    } elseif ($fieldKey -eq "expiryYear") {
+                        if ($expectedKind -ne "expiryYear") { throw "Kind mismatch for expiryYear." }
+                        $val = [string]$parsed.expiryYear
+                    } else {
+                        throw "Invalid fieldKey '$fieldKey' for card record."
+                    }
+                } else {
+                    throw "Unsupported record payload for variable resolution."
+                }
+            } else {
+                # Legacy generated password string
+                if ($expectedScope -ne "site" -or $sourceOrigin -ne $targetOrigin) {
+                    throw "Cross-origin denied for legacy record."
+                }
+                if ($expectedKind -ne "password") {
+                    throw "Kind mismatch for legacy password record."
+                }
+                $val = [string]$rawSecret
+            }
+
+            if ($null -eq $val) {
+                throw "Failed to resolve value from record."
+            }
+
+            $res = [ordered]@{
+                success        = $true
+                authentication = $authMode
+                action         = "resolve-variable"
+                origin         = $targetOrigin
+                recordId       = $recordId
+                value          = $val
+            }
+            [System.Console]::Out.WriteLine(($res | ConvertTo-Json -Depth 5 -Compress))
+            return
+        }
+
+        "authenticate" {
+            if ([string]::IsNullOrWhiteSpace($req.origin)) { throw "Missing 'origin' parameter in broker request." }
+            $canonicalOrigin = Get-CanonicalOrigin -OriginInput $req.origin -Synthetic:$Synthetic
+
+            if (-not $Synthetic) {
+                Invoke-WindowsHelloAuth -Message "Auto-Mate Broker: Authenticate for $canonicalOrigin"
+            }
+
+            $res = [ordered]@{
+                success        = $true
+                authentication = $authMode
+                action         = "authenticate"
+                origin         = $canonicalOrigin
+            }
+            [System.Console]::Out.WriteLine(($res | ConvertTo-Json -Depth 5 -Compress))
+            return
+        }
+
         default {
             throw "Unknown broker action '$action'."
         }

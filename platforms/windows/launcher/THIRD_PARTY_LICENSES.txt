@@ -1,5 +1,5 @@
 AUTO-MATE WINDOWS APPLICATION — THIRD-PARTY MATERIALS
-Version: 0.1.0-preview.1 / Windows x64 / unsigned private preview
+Version: 0.1.0-preview.2 / Windows x64 / unsigned private preview
 
 This application archive includes third-party software under several licenses,
 including copyleft LGPL terms. These components are NOT all covered by Auto-Mate's

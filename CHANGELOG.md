@@ -1,10 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-preview.2
 
-- Native test harness: give real multi-process DPAPI/ACL fixtures a bounded 60-second budget. Hosted verification exceeded the previous 20-second roundtrip budget and five-second defaults, causing Bun to kill active brokers and report late errors. Validation-only tests retain their default budget; production IPC/authentication deadlines, all security assertions, and the published application are unchanged. No retry or skipped test was added.
-- Separate homepage: changed the simulated film to viewport-wide muted inline autoplay and continuous looping without native media controls. Site/OS motion preferences still pause playback; captions, transcript, and honest format-failure handling remain available.
-
+- **Agent-assisted form inspection and missing-information dialogs**: Added general form inspection (`InformationSession`, `InformationFlow`, `WindowsInformationVault`, and `InformationPlanner`). The agent can discover visible, explicitly labeled inputs (text, email, tel, url, username, password, select, textarea, date, number) with strict evidence verification.
+- **Vault variable visibility for the Agent**: The agent receives an allowlisted catalog containing all variable **names and descriptions** across the vault so it knows which variable goes into which field. **Secret values and ciphertexts are NEVER sent to the agent.**
+- **Interactive missing-information dialog**: Whenever the agent needs information that is not available in the vault (such as Name on the first run, or a new username created for a specific site), a modal dialogue box automatically appears for the user to provide it. The user can optionally save it to the encrypted vault as a **Shared profile** variable (reusable across sites) or a **Site-bound** variable (restricted to the current origin).
+- **Shared profiles with site-bound credentials**: Non-credential variables (names, general profile text) can be shared across websites upon explicit approval. Username and password credentials remain strictly site-bound.
+- **Strict fill-only contract**: Fields start unchecked; the user explicitly reviews and approves each disclosure. The application never clicks submit or creates accounts autonomously.
+- **Native test harness**: Extended integration test budget to 60s for multi-process DPAPI fixtures. Full test suite expanded to 207 passing tests with 0 failures across 15 files.
 ## 0.1.0-preview.1
 
 - First application release: an **unsigned private Windows x64 preview**, with a native launcher and bundled Bun, Chromium, runtime dependencies, required licenses, and application-only ZIP/checksum. No end-user Bun/Node setup, homepage, marketing demo page, or demo film is included.
