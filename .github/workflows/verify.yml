@@ -31,9 +31,6 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: bun install --frozen-lockfile
 
-      - name: Diagnose isolated native fixture
-        run: bun .github/diagnose-native.ts
-
       - name: Install Playwright Chromium
         run: bun x playwright install chromium
 
@@ -44,7 +41,8 @@ jobs:
         run: bun test
 
       - name: Native DPAPI synthetic vault smoke
-        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File platforms/windows/smoke-test.ps1
+        shell: powershell
+        run: ./platforms/windows/smoke-test.ps1
 
       - name: End-to-end synthetic DPAPI browser smoke
         run: bun run smoke

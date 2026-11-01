@@ -357,6 +357,7 @@ describe('LocalAuditHistory shared reader contract', () => {
     }
   });
 
+  // Includes creating/removing 4,097 real files, not only the reader calls.
   test('size and row bound refusal', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'audit-hist-bounds-'));
     try {
@@ -393,7 +394,7 @@ describe('LocalAuditHistory shared reader contract', () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   test('empty or missing directory and empty file', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'audit-hist-empty-'));

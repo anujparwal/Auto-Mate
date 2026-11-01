@@ -103,6 +103,10 @@ param (
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# Child processes may inherit PowerShell 7 module paths. Resolve native cmdlets
+# from this host's built-ins, not an incompatible parent's module directory.
+$env:PSModulePath = [System.IO.Path]::Combine($PSHOME, "Modules")
+
 # Ensure Cryptography Assemblies are loaded
 try {
     Add-Type -AssemblyName System.Security -ErrorAction Stop
@@ -1228,6 +1232,16 @@ Security:
 
 $exitCode = 0
 try {
+    if ($Broker) {
+        # Machine IPC is UTF-8, even when a detached Windows console defaults to OEM.
+        # Replace only this process's readers/writers; do not change console code pages.
+        $brokerUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
+        [System.Console]::SetIn((New-Object System.IO.StreamReader([System.Console]::OpenStandardInput(), $brokerUtf8, $false)))
+        $brokerOutput = New-Object System.IO.StreamWriter([System.Console]::OpenStandardOutput(), $brokerUtf8)
+        $brokerOutput.AutoFlush = $true
+        [System.Console]::SetOut($brokerOutput)
+    }
+
     if ($Synthetic) {
         Assert-SyntheticVaultPath -PathInput $VaultPath
     }

@@ -127,6 +127,8 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File platform
 
 ### Protocol Payloads
 
+Broker requests and responses are **BOM-free UTF-8 JSON**, independent of the Windows console code page. The helper uses process-local stream readers/writers rather than changing console encodings. Send valid UTF-8 bytes directly; a legacy .NET `Process.StandardInput` writer can otherwise inherit an unwanted BOM. The native smoke fixes its writer/decoder encodings, restores the original console settings, and checks a detached write against a separate UTF-8-console read so matching wrong encodings cannot conceal credential corruption.
+
 #### Action: `persist-generated`
 Generates CSPRNG password, DPAPI-encrypts and persists to vault, and returns generated secret to trusted stdout:
 - **STDIN**:
@@ -230,6 +232,8 @@ Any failure emits a sanitized JSON error object without leaking internal excepti
 ```
 
 Authentication denial instead returns exit 1 with `{"success":false,"error":"VAULT_AUTHENTICATION_REQUIRED"}` before reading, creating, migrating, or changing a vault. The trusted TypeScript adapter defaults to this normal authenticated mode and verifies the native authentication context and requested identity before accepting a generated secret.
+
+The native helper resolves cmdlets from its own `$PSHOME\Modules`, rather than inheriting an incompatible parent PowerShell runtime's module directory. This prevents a PowerShell 7 parent from breaking Windows PowerShell 5.1 security-cmdlet loading. Restrictive ACL application is still mandatory and fails closed; no permissions check is skipped or converted into a no-op.
 
 ### Isolated Synthetic Execution
 
