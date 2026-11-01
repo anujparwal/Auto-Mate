@@ -255,9 +255,10 @@ async function controlValue(candidate: AutofillCandidate, value: string): Promis
 export class AutofillSession {
   readonly page: Page;
   readonly origin: string;
-  readonly url: string;
-  readonly fields: readonly AutofillCandidate[];
   readonly closed: Promise<void>;
+
+  #url: string;
+  #fields: readonly AutofillCandidate[];
 
   readonly #context: BrowserContext;
   readonly #kind: VaultKind;
@@ -270,6 +271,7 @@ export class AutofillSession {
   #abortListener?: () => void;
   #isClosed = false;
   #closing?: Promise<void>;
+  #released = false;
 
   private constructor(
     context: BrowserContext,
@@ -282,9 +284,9 @@ export class AutofillSession {
     this.#context = context;
     this.page = page;
     this.origin = origin;
-    this.url = url;
+    this.#url = url;
     this.#kind = kind;
-    this.fields = Object.freeze([...fields]);
+    this.#fields = Object.freeze([...fields]);
 
     const { promise, resolve } = Promise.withResolvers<void>();
     this.closed = promise;
@@ -334,12 +336,20 @@ export class AutofillSession {
   get error(): string | undefined {
     return this.#error;
   }
+  get url(): string {
+    return this.#url;
+  }
+
+  get fields(): readonly AutofillCandidate[] {
+    return this.#fields;
+  }
+
 
   static async open(
     browser: Browser,
     url: string,
     kind: VaultKind,
-    options?: { prepare?: (page: Page) => Promise<void>; signal?: AbortSignal },
+    options?: { prepare?: (page: Page) => Promise<void>; signal?: AbortSignal; allowEmptyFields?: boolean },
   ): Promise<AutofillSession> {
     if (!url || typeof url !== 'string') {
       throw new Error('INVALID_URL');
@@ -452,26 +462,30 @@ export class AutofillSession {
       }
 
       if (!discovery.requests.length) {
-        await context.close().catch(() => {});
-        throw new Error('UNSUPPORTED_FORM');
+        if (!options?.allowEmptyFields) {
+          await context.close().catch(() => {});
+          throw new Error('UNSUPPORTED_FORM');
+        }
       }
 
-      const fieldRequests: readonly FieldRequest[] = Object.freeze(
-        discovery.requests.map(req => fieldRequest(req.field, req.fieldSelector, req.requestSelector)),
-      );
+      let candidates: AutofillCandidate[] = [];
+      if (discovery.requests.length) {
+        const fieldRequests: readonly FieldRequest[] = Object.freeze(
+          discovery.requests.map(req => fieldRequest(req.field, req.fieldSelector, req.requestSelector)),
+        );
 
-      const verifiedFields = await verifyFieldRequests(page, origin, fieldRequests);
+        const verifiedFields = await verifyFieldRequests(page, origin, fieldRequests);
 
-      if (aborted || options?.signal?.aborted) {
-        await context.close().catch(() => {});
-        throw new Error('TASK_STOPPED');
+        if (aborted || options?.signal?.aborted) {
+          await context.close().catch(() => {});
+          throw new Error('TASK_STOPPED');
+        }
+
+        candidates = verifiedFields.map(vf => ({
+          field: vf.request.id as AutofillField,
+          verified: vf,
+        }));
       }
-
-      const candidates: AutofillCandidate[] = verifiedFields.map(vf => ({
-        field: vf.request.id as AutofillField,
-        verified: vf,
-      }));
-
       if (options?.signal) {
         options.signal.removeEventListener('abort', onInspectionAbort);
       }
@@ -501,7 +515,7 @@ export class AutofillSession {
     policy: PolicyBroker, grant: string, task: string, vault: AutofillVault,
     recordId: string, kind: VaultKind, selected: readonly AutofillField[],
   ): Promise<'filled' | 'stopped' | 'failed'> {
-    if (this.#state !== 'review') return 'failed';
+    if (this.#state !== 'review' || this.#released) return 'failed';
     let signal: AbortSignal | undefined;
     try {
       signal = policy.executionSignal(grant, task);
@@ -520,7 +534,7 @@ export class AutofillSession {
         return candidate;
       });
       const check = () => {
-        if (signal!.aborted || this.#isClosed) throw new Error('TASK_STOPPED');
+        if (signal!.aborted || this.#isClosed || this.#released) throw new Error('TASK_STOPPED');
         for (const candidate of candidates) {
           const request = candidate.verified.request;
           if (policy.category(request.credential) !== AUTOFILL_FIELDS[candidate.field].category)
@@ -586,5 +600,81 @@ export class AutofillSession {
       throw new Error('BROWSER_CLOSE_FAILED');
     });
     return this.#closing;
+  }
+
+  releaseForOwnerAction(): void {
+    if (this.#state === 'filling') throw new Error('INVALID_STATE');
+    this.#released = true;
+    if (this.#abortListener && this.#signal) {
+      this.#signal.removeEventListener('abort', this.#abortListener);
+      this.#abortListener = undefined;
+    }
+    if (this.#activePolicy && this.#activeTask) {
+      const taskState = this.#activePolicy.state(this.#activeTask);
+      if (taskState === 'normal' || taskState === 'protected') this.#activePolicy.finish(this.#activeTask, 'completed');
+      this.#activePolicy = undefined;
+      this.#activeTask = undefined;
+    }
+    this.#signal = undefined;
+  }
+
+  async refreshAfterOwnerAction(): Promise<void> {
+    if (this.#isClosed) throw new Error('SESSION_CLOSED');
+    this.releaseForOwnerAction();
+
+    let currentOrigin: string;
+    try {
+      const parsed = new URL(this.page.url());
+      if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash) {
+        throw new Error('ORIGIN_MISMATCH');
+      }
+      currentOrigin = httpsOrigin(parsed.origin);
+    } catch {
+      await this.close().catch(() => {});
+      throw new Error('ORIGIN_MISMATCH');
+    }
+
+    if (currentOrigin !== this.origin) {
+      await this.close().catch(() => {});
+      throw new Error('ORIGIN_MISMATCH');
+    }
+
+    for (const item of this.#fields) {
+      void item.verified.field.dispose().catch(() => {});
+      void item.verified.source.dispose().catch(() => {});
+    }
+
+    try {
+      const discovery: DiscoveryResult = await this.page.evaluate(discoverDocumentFields, { kind: this.#kind, origin: this.origin });
+
+      if (!discovery.requests.length) {
+        this.#fields = Object.freeze([]);
+      } else {
+        const fieldRequests: readonly FieldRequest[] = Object.freeze(
+          discovery.requests.map(req => fieldRequest(req.field, req.fieldSelector, req.requestSelector)),
+        );
+
+        const verifiedFields = await verifyFieldRequests(this.page, this.origin, fieldRequests);
+        const candidates: AutofillCandidate[] = verifiedFields.map(vf => ({
+          field: vf.request.id as AutofillField,
+          verified: vf,
+        }));
+        this.#fields = Object.freeze(candidates);
+      }
+
+      this.#url = this.page.url();
+      this.#state = 'review';
+      this.#error = undefined;
+      this.#released = false;
+      this.#activePolicy = undefined;
+      this.#activeTask = undefined;
+      this.#signal = undefined;
+      this.#abortListener = undefined;
+    } catch (err) {
+      this.#state = 'failed';
+      this.#error = 'SETUP_FAILED';
+      await this.close().catch(() => {});
+      throw err;
+    }
   }
 }

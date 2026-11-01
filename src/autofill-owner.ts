@@ -10,9 +10,10 @@ import { WindowsSessionProtection, type SessionProtection } from './windows-sess
 import { AUTOFILL_FIELDS, type AutofillField, type AutofillVault, type VaultEntry, type VaultKind, type VaultRecord } from './autofill-contract';
 import { InformationSession } from './information-session';
 import { WindowsInformationVault } from './information-vault';
-import { InformationPlanner } from './information-planner';
+import { applicationInformationPlanner } from './application-planner';
 import { InformationFlow, type InformationOwnerState, type InformationPlanningClient } from './information-flow';
 import type { InformationVariableInput, InformationVault } from './information-contract';
+import { WebsiteActions, type WebsiteAction } from './website-actions';
 
 declare global {
   interface Window {
@@ -22,7 +23,7 @@ declare global {
 }
 
 const OWNER_ORIGIN = 'https://autofill-owner.auto-mate.invalid';
-type Phase = 'idle' | 'inspecting' | 'review' | 'filling' | 'filled' | 'stopped' | 'failed';
+type Phase = 'idle' | 'inspecting' | 'review' | 'filling' | 'filled' | 'acting' | 'stopped' | 'failed';
 
 export interface OwnerVaultState {
   readonly origin?: string;
@@ -42,6 +43,10 @@ export interface AutofillAppField {
 
 export interface AutofillAppState {
   readonly phase: Phase;
+  readonly authenticationMode: 'windows-hello' | 'user-key';
+  readonly modelObservationAllowed: boolean;
+  readonly websiteActions: readonly WebsiteAction[];
+  readonly pendingPermission?: Readonly<{ id: string; origin: string; actionId: string; label: string; durationSeconds: number }>;
   readonly busy: boolean;
   readonly revision: number;
   readonly kind: VaultKind | 'information';
@@ -58,6 +63,7 @@ export interface AutofillApp {
   readonly page: Page;
   readonly closed: Promise<void>;
   readonly auditPath: string;
+  command(raw: unknown): Promise<void>;
   close(): Promise<void>;
 }
 export interface AutofillAppOptions {
@@ -67,6 +73,8 @@ export interface AutofillAppOptions {
   auditDirectory?: string;
   informationVault?: InformationVault;
   informationPlanner?: InformationPlanningClient;
+  authenticationMode?: 'windows-hello' | 'user-key';
+  onUpdate?: (update: unknown) => void;
   /** Reviewed integration fixtures only; never accepted through owner/model commands. */
   prepareWebsite?: (page: Page) => Promise<void>;
 }
@@ -82,9 +90,13 @@ function ownerError(error: unknown): string {
   if (code === 'SETUP_FAILED') return 'The website could not be loaded under exact-origin HTTPS isolation. Off-origin redirects, unavailable resources, and browser/TLS failures are not bypassed.';
   if (code === 'INFORMATION_CATALOG_REQUIRED') return 'Authenticate and refresh the variable catalog before planning. Review its names and descriptions before sharing them.';
   if (code === 'INFORMATION_CONSENT_REQUIRED') return 'Explicitly consent before sending field labels and variable metadata to the configured model.';
+  if (code === 'INFORMATION_MODEL_OBSERVATION_DENIED') return 'API planning is blocked after website interaction. Use local mapping without API disclosure, or inspect again for a fresh isolated browser.';
   if (code === 'PLANNER_CONFIGURATION') return 'The model endpoint, model name, or API configuration is invalid. No model request was made.';
   if (code === 'PLANNER_UNAVAILABLE') return 'The configured model is unavailable. No values were sent and no automatic fallback was used.';
   if (code === 'PLANNER_INVALID_RESPONSE') return 'The model returned an invalid or unsafe field mapping. No disclosure was approved.';
+  if (code === 'INVALID_PLAN_INPUT') return 'The form or variable catalog exceeds supported bounds. Nothing was truncated or sent. Use a smaller supported form or catalog.';
+  if (code === 'HOSTED_SESSION_EXPIRED') return 'Your hosted login has expired. Sign in again; website authority has been removed.';
+  if (code === 'WEBSITE_ACTION_CHANGED' || code === 'INVALID_WEBSITE_ACTION') return 'The website button changed or is no longer available. No replacement button was clicked. Inspect again.';
   if (code === 'BROWSER_CLOSE_FAILED') return 'Browser closure could not be confirmed. Close the protected browser now; execution authority has been removed.';
   return 'Operation unavailable or unsupported. No further disclosure is permitted. Check the record type, record ID, and supported labelled fields, then inspect again.';
 }
@@ -104,14 +116,15 @@ function exactKeys(command: Record<string, unknown>, keys: string[]): void {
   if (Object.keys(command).length !== keys.length || keys.some(key => !Object.hasOwn(command, key))) throw new Error('INVALID_OWNER_COMMAND');
 }
 
-/** Local authenticated-owner surface. No model bindings, remote preview listener, or secret-returning renderer APIs. */
+/** Trusted owner engine. Hosted transports must supply their own authenticated vault and lifecycle gate. */
 export async function openAutofillApp(options: AutofillAppOptions = {}): Promise<AutofillApp> {
-  const informationPlanner = options.informationPlanner ?? InformationPlanner.fromEnvironment();
+  if (options.authenticationMode === 'user-key' && (!options.viewer || !options.vault || !options.informationVault || !options.protection || !options.onUpdate)) throw new Error('AUTOFILL_APP_CONFIGURATION');
+  const informationPlanner = options.informationPlanner ?? applicationInformationPlanner();
   const directory = options.auditDirectory ?? (process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'AutoMate', 'audit') : undefined);
   if (!directory) throw new Error('AUDIT_UNAVAILABLE');
   const journal = new LocalAuditJournal(directory);
   const catalog = { ...Object.fromEntries(Object.entries(AUTOFILL_FIELDS).map(([field, definition]) => ['autofill:' + field, definition.category])),
-    'information:value': 'red' as const };
+    'information:value': 'red' as const, 'website:action': 'red' as const };
   const policy = new PolicyBroker(catalog, journal.append);
   const vault = options.vault ?? new WindowsAutofillVault();
   let viewer: Browser | undefined;
@@ -123,6 +136,10 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
     if (!protection) throw new Error('SESSION_UNAVAILABLE');
     protection.assertActive();
   });
+  let websiteActions: WebsiteActions | undefined;
+  let pendingPermission: AutofillAppState['pendingPermission'];
+  let ownerActionGrant: { task: string; signal: AbortSignal; listener: () => void } | undefined;
+  let modelObservationAllowed = true;
   let inspection: AbortController | undefined;
   let phase: Phase = 'idle';
   let kind: VaultKind | 'information' = 'login';
@@ -147,6 +164,10 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
     const current = session;
     const state: AutofillAppState = {
       phase,
+      modelObservationAllowed,
+      authenticationMode: options.authenticationMode ?? 'windows-hello',
+      websiteActions: options.authenticationMode === 'user-key' ? websiteActions?.actions ?? [] : [],
+      pendingPermission,
       busy,
       revision,
       kind,
@@ -170,6 +191,7 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
       },
       information: kind === 'information' ? information.state : undefined,
     };
+    options.onUpdate?.({ kind: 'state', state });
     await page.evaluate(data => {
       window.autoMateAutofillUpdate(data);
     }, { kind: 'state', state });
@@ -177,6 +199,9 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
   async function stop(denied = false): Promise<void> {
     revision++;
     inspection?.abort();
+    websiteActions = undefined;
+    pendingPermission = undefined;
+    try { releaseOwnerAction(); } catch { error = ownerError(new Error('AUDIT_UNAVAILABLE')); }
     information.clear();
     vaultLocked = true;
     vaultEntries = [];
@@ -215,6 +240,7 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
     try {
       const frame = await current.capture();
       if (session !== current || snapshot !== revision || closed || !page || page.isClosed()) return;
+      options.onUpdate?.({ kind: 'frame', frame, revision: snapshot });
       await page.evaluate(data => {
         window.autoMateAutofillUpdate(data);
       }, { kind: 'frame', frame, revision: snapshot });
@@ -227,13 +253,16 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
   async function closeResources(): Promise<void> {
     if (closed) return;
     closed = true;
+    let failed = false;
     inspection?.abort();
     information.clear();
+    websiteActions = undefined;
+    pendingPermission = undefined;
+    try { releaseOwnerAction(); } catch { failed = true; }
     clearInterval(timer);
     vaultLocked = true;
     vaultEntries = [];
     vaultOrigin = undefined;
-    let failed = false;
     try { policy.stopAll(); } catch { failed = true; }
     try { protection?.close(); } catch { failed = true; }
     try { await session?.close(); } catch { failed = true; }
@@ -249,6 +278,26 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
   function close(): Promise<void> {
     closing ??= closeResources();
     return closing;
+  }
+  function releaseOwnerAction(): void {
+    const previous = ownerActionGrant;
+    ownerActionGrant = undefined;
+    if (!previous) return;
+    previous.signal.removeEventListener('abort', previous.listener);
+    if (['normal', 'protected'].includes(policy.state(previous.task))) policy.finish(previous.task, 'completed');
+  }
+  async function command(raw: unknown): Promise<void> {
+    const isInterrupt = raw !== null && typeof raw === 'object' && 'action' in raw && (raw.action === 'stop' || raw.action === 'vault-lock');
+    if (busy && !isInterrupt) return;
+    const running = dispatch(raw).catch(async fault => {
+      error = ownerError(fault);
+      if ((fault instanceof Error && ['AUDIT_UNAVAILABLE', 'SESSION_UNAVAILABLE', 'HOSTED_SESSION_EXPIRED'].includes(fault.message)) || phase === 'filling' || phase === 'acting') await stop();
+      if (phase === 'inspecting') phase = 'failed';
+      await publish().catch(() => {});
+    });
+    if (!isInterrupt) operation = running;
+    await running;
+    if (operation === running) operation = undefined;
   }
   async function dispatch(raw: unknown): Promise<void> {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('INVALID_OWNER_COMMAND');
@@ -281,6 +330,9 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
         inspection?.abort();
         information.clear();
         await previous?.close();
+        releaseOwnerAction();
+        websiteActions = undefined;
+        pendingPermission = undefined;
         if (closed || snapshot !== revision) return;
         revision++;
         vaultLocked = true;
@@ -295,11 +347,13 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
         const inspectRevision = revision;
         await publish();
         const opened = kind === 'information'
-          ? await InformationSession.open(viewer!, command.url, { signal: controller.signal, prepare: options.prepareWebsite })
-          : await AutofillSession.open(viewer!, command.url, kind, { signal: controller.signal, prepare: options.prepareWebsite });
+          ? await InformationSession.open(viewer!, command.url, { signal: controller.signal, prepare: options.prepareWebsite, allowEmptyFields: options.authenticationMode === 'user-key' })
+          : await AutofillSession.open(viewer!, command.url, kind, { signal: controller.signal, prepare: options.prepareWebsite, allowEmptyFields: options.authenticationMode === 'user-key' });
         if (closed || controller.signal.aborted || inspectRevision !== revision) { await opened.close(); return; }
         session = opened;
+        modelObservationAllowed = true;
         if (opened instanceof InformationSession) information.attach(opened.origin, opened.fields.map(field => field.metadata));
+        if (options.authenticationMode === 'user-key') websiteActions = await WebsiteActions.discover(opened.page, opened.origin);
         phase = 'review';
         message = 'Verify the exact destination and requesting text. Choose a record and explicitly check each field you approve.';
         void opened.closed.then(async () => {
@@ -307,6 +361,9 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
           session = undefined;
           revision++;
           information.clear();
+          websiteActions = undefined;
+          pendingPermission = undefined;
+          try { releaseOwnerAction(); } catch { error = ownerError(new Error('AUDIT_UNAVAILABLE')); }
           vaultLocked = true;
           vaultEntries = [];
           vaultOrigin = undefined;
@@ -316,6 +373,68 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
           if (opened.error) error = ownerError(new Error(opened.error));
           await publish().catch(() => {});
         });
+      } else if (command.action.startsWith('website-click-')) {
+        if (options.authenticationMode !== 'user-key' || !session || !websiteActions || !['review', 'filled'].includes(phase)) throw new Error('INVALID_OWNER_COMMAND');
+        const current = session;
+        const actions = websiteActions;
+        protection!.assertActive();
+        if (command.action === 'website-click-request') {
+          exactKeys(command, ['action', 'revision', 'buttonId', 'durationSeconds']);
+          if (pendingPermission || information.state.request || typeof command.buttonId !== 'string' || ![60, 300, 900].includes(command.durationSeconds as number)) throw new Error('INVALID_OWNER_COMMAND');
+          const action = actions.actions.find(candidate => candidate.id === command.buttonId);
+          if (!action) throw new Error('INVALID_OWNER_COMMAND');
+          await actions.verify(action.id);
+          protection!.assertActive();
+          if (closed || session !== current || revision !== snapshot) return;
+          pendingPermission = { id: randomUUID(), origin: current.origin, actionId: action.id, label: action.label, durationSeconds: command.durationSeconds as number };
+          message = 'Permission requested. No website button has been clicked.';
+        } else if (command.action === 'website-click-deny') {
+          exactKeys(command, ['action', 'revision', 'permissionId']);
+          if (!pendingPermission || command.permissionId !== pendingPermission.id) throw new Error('INVALID_OWNER_COMMAND');
+          pendingPermission = undefined;
+          message = 'Button click denied. The website was not clicked.';
+        } else if (command.action === 'website-click-approve') {
+          exactKeys(command, ['action', 'revision', 'permissionId']);
+          const permission = pendingPermission;
+          if (!permission || command.permissionId !== permission.id || permission.origin !== current.origin) throw new Error('INVALID_OWNER_COMMAND');
+          pendingPermission = undefined;
+          await actions.verify(permission.actionId);
+          protection!.assertActive();
+          if (closed || session !== current || revision !== snapshot) return;
+          phase = 'acting';
+          modelObservationAllowed = false;
+          message = 'Executing your explicitly approved button click.';
+          await publish();
+          await pending;
+          if (closed || session !== current || revision !== snapshot) return;
+          releaseOwnerAction();
+          current.releaseForOwnerAction();
+          information.clear();
+          vaultEntries = [];
+          vaultLocked = true;
+          vaultOrigin = undefined;
+          const task = randomUUID();
+          const grant = policy.approve({ task, origin: current.origin, credentials: ['website:action'], layers: ['red'], operations: ['submit'], durationSeconds: permission.durationSeconds, maxSubmissions: 1 });
+          const signal = policy.executionSignal(grant, task);
+          const listener = () => { void current.close().catch(() => {}); };
+          ownerActionGrant = { task, signal, listener };
+          signal.addEventListener('abort', listener, { once: true });
+          policy.authorize(grant, task, current.origin, 'submit');
+          await actions.click(permission.actionId, signal, () => {
+            protection!.assertActive();
+            if (closed || session !== current || revision !== snapshot || signal.aborted) throw new Error('TASK_STOPPED');
+          });
+          if (closed || session !== current || revision !== snapshot || signal.aborted) return;
+          await current.refreshAfterOwnerAction();
+          if (closed || session !== current || revision !== snapshot || signal.aborted) return;
+          await actions.dispose();
+          websiteActions = await WebsiteActions.discover(current.page, current.origin);
+          if (closed || session !== current || revision !== snapshot || signal.aborted) return;
+          revision++;
+          if (current instanceof InformationSession) information.attach(current.origin, current.fields.map(field => field.metadata));
+          phase = 'review';
+          message = 'Approved click completed. Field approvals were cleared; review the updated page before another disclosure or click.';
+        } else throw new Error('INVALID_OWNER_COMMAND');
       } else if (command.action === 'vault-list') {
         exactKeys(command, ['action', 'revision', 'origin']);
         if (typeof command.origin !== 'string') throw new Error('INVALID_OWNER_COMMAND');
@@ -415,14 +534,15 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
           if (snapshot !== revision || session !== current || closed) return;
           await information.loadCatalog();
           message = 'Review all variable names and descriptions. Values remain hidden; credentials for another site cannot be used here.';
-        } else if (command.action === 'information-plan') {
-          exactKeys(command, ['action', 'revision', 'shareMetadata']);
-          if (typeof command.shareMetadata !== 'boolean') throw new Error('INVALID_OWNER_COMMAND');
+        } else if (command.action === 'information-plan' || command.action === 'information-plan-local') {
+          const localOnly = command.action === 'information-plan-local';
+          exactKeys(command, localOnly ? ['action', 'revision'] : ['action', 'revision', 'shareMetadata']);
+          if (!localOnly && (typeof command.shareMetadata !== 'boolean' || !modelObservationAllowed)) throw new Error('INFORMATION_MODEL_OBSERVATION_DENIED');
           await current.capture();
           if (snapshot !== revision || session !== current || closed) return;
-          message = 'Planning field-to-variable links only. No saved or entered values are sent to the model.';
+          message = localOnly ? 'Mapping locally without sharing page labels or metadata with an API.' : 'Planning field-to-variable links only. No saved or entered values are sent to the model.';
           await publish();
-          await information.plan(command.shareMetadata);
+          await information.plan(command.shareMetadata === true, localOnly);
           message = 'Supply any requested information locally, or skip a field. Then explicitly approve each disclosure; nothing is preselected.';
         } else if (command.action === 'information-provide') {
           exactKeys(command, ['action', 'revision', 'requestId', 'value', 'save']);
@@ -455,6 +575,8 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
           await current.capture();
           if (snapshot !== revision || session !== current || closed) return;
           protection.assertActive();
+          releaseOwnerAction();
+          modelObservationAllowed = false;
           const task = randomUUID();
           const grant = policy.approve({ task, origin: current.origin, credentials: ['information:value'], layers: ['red'],
             operations: ['fill'], durationSeconds: command.durationSeconds as number, maxSubmissions: 0 });
@@ -492,11 +614,13 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
           await current.capture();
           protection.assertActive();
           if (session !== current || snapshot !== revision || closed) return;
+          releaseOwnerAction();
+          modelObservationAllowed = false;
           const task = randomUUID();
           const grant = policy.approve({ task, origin: current.origin, credentials, layers, operations: ['fill'],
             durationSeconds: command.durationSeconds as number, maxSubmissions: 0 });
           phase = 'filling';
-          message = 'Approved fields only. Waiting for Windows Hello and rechecking evidence before disclosure.';
+          message = options.authenticationMode === 'user-key' ? 'Approved fields only. Verifying your active key-authenticated session and current evidence.' : 'Approved fields only. Waiting for Windows Hello and rechecking evidence before disclosure.';
           await publish();
           const protectedVault: AutofillVault = {
             list: origin => vault.list(origin),
@@ -540,18 +664,7 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
     page = await context.newPage();
     await page.exposeBinding('autoMateAutofill', async (source, raw: unknown) => {
       if (source.page !== page || source.frame !== page!.mainFrame() || new URL(page!.url()).origin !== OWNER_ORIGIN) throw new Error('INVALID_OWNER_COMMAND');
-      // Rejected concurrent requests must not replace the operation awaited by shutdown.
-      const isInterrupt = raw !== null && typeof raw === 'object' && 'action' in raw && (raw.action === 'stop' || raw.action === 'vault-lock');
-      if (busy && !isInterrupt) return;
-      const running = dispatch(raw).catch(async fault => {
-        error = ownerError(fault);
-        if ((fault instanceof Error && ['AUDIT_UNAVAILABLE', 'SESSION_UNAVAILABLE'].includes(fault.message)) || phase === 'filling') await stop();
-        if (phase === 'inspecting') phase = 'failed';
-        await publish().catch(() => {});
-      });
-      if (!isInterrupt) operation = running;
-      await running;
-      if (operation === running) operation = undefined;
+      await command(raw);
     });
     page.on('popup', popup => { void popup.close(); });
     page.on('close', () => { void close().catch(() => {}); });
@@ -560,6 +673,6 @@ export async function openAutofillApp(options: AutofillAppOptions = {}): Promise
     await publish();
     timer = setInterval(() => { if (!pending) { pending = capture().finally(() => { pending = undefined; }); void pending.catch(() => {}); } }, 500);
     timer.unref();
-    return { page, closed: closure.promise, auditPath: journal.path, close };
+    return { page, command, closed: closure.promise, auditPath: journal.path, close };
   } catch { await close(); throw new Error('AUTOFILL_APP_UNAVAILABLE'); }
 }

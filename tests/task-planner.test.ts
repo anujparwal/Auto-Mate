@@ -35,7 +35,6 @@ test('provider configuration rejects remote local endpoints, insecure cloud tran
       'http://user:pass@localhost/v1/chat/completions', 'http://localhost/v1/chat/completions?key=secret',
       'http://localhost/v1/chat/completions#fragment', 'file:///provider'].map(endpoint => ({ mode: 'local' as const, endpoint, model: 'fixture' })),
     { mode: 'cloud', endpoint: 'http://provider.invalid/v1/chat/completions', model: 'fixture', apiKey: 'test-key' },
-    { mode: 'cloud', endpoint: 'https://provider.invalid/v1/chat/completions', model: 'fixture' },
     { mode: 'cloud', endpoint: 'https://user:pass@provider.invalid/v1/chat/completions', model: 'fixture', apiKey: 'test-key' },
     { mode: 'cloud', endpoint: 'https://provider.invalid/v1/chat/completions?key=secret', model: 'fixture', apiKey: 'test-key' },
   ];

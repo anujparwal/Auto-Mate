@@ -1,6 +1,6 @@
 {
   "name": "auto-mate",
-  "version": "0.1.0-preview.2",
+  "version": "0.1.0-preview.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "build:app": "powershell.exe -NoProfile -File tools/build-app.ps1",
     "check:app": "powershell.exe -NoProfile -File tools/check-app.ps1",
     "start": "bun run tools/start.ts",
+    "host": "bun run tools/run-hosted.ts",
     "test": "bun test",
     "smoke": "bun run tools/smoke.ts",
     "typecheck": "tsc --noEmit",

@@ -4,10 +4,9 @@ Security-first browser automation development project for Windows and Android.
 
 **Development software. Do not put real credentials in it yet.** This repository does not claim zero-risk security, production readiness, or a complete autonomous agent. It deliberately does not expose native vault operations as model tools.
 
-**Start here:** [use.md](use.md) contains portable-app installation, the complete owner workflow, fictitious-data tests, source development, and supplied-API instructions. [CONTEXT.MD](CONTEXT.MD) records the project conversations, decisions, evidence, and remaining gates for maintainers; it is excluded from application bundles and the public homepage.
+**Start here:** [use.md](use.md) contains portable-app installation, the complete owner workflow, fictitious-data tests, source development, hosted mode instructions, and supplied-API configuration. [docs/hosting.md](docs/hosting.md) details hosted mode architecture, cryptography, and network isolation. [docs/model-api.md](docs/model-api.md) documents the OpenAI-compatible model contract. [CONTEXT.MD](CONTEXT.MD) records project decisions, evidence, and remaining gates for maintainers; it is excluded from application bundles and the public homepage.
 
-**Release boundary:** `v0.1.0-preview.2` is an unsigned **private Windows application preview**, not a public production release. `bun run build:app` creates its portable application ZIP/checksum under `dist/app`; bundled runtime components remove the end-user Bun/Node setup requirement. The separate public [Auto-Mate-homepage](https://github.com/anujparwal/Auto-Mate-homepage) repository contains the homepage and clearly labeled non-interactive simulated film. Neither is included in the application release. Vaults, Windows Hello, approvals, and protected browsers remain on each user's PC.
-
+**Release boundary:** `v0.1.0-preview.3` is an unsigned **private Windows application preview**, not a public production release. `bun run build:app` creates its portable application ZIP/checksum under `dist/app`; bundled runtime components remove the end-user Bun/Node setup requirement. The separate public [Auto-Mate-homepage](https://github.com/anujparwal/Auto-Mate-homepage) repository contains the homepage and clearly labeled non-interactive simulated film. Neither is included in the application release.
 ## What is implemented
 
 - A TypeScript broker with exact HTTPS-origin authorization, task-bound credential handles, explicit credential-category scopes, actively expiring grants, grant-bound cancellation signals, submission budgets, destination blocking, revocation, and explicit protected task state.
@@ -18,14 +17,15 @@ Security-first browser automation development project for Windows and Android.
 - An owner-only Windows live preview with explicit task/category/duration approval or denial, deterministically verified request/field associations, paired numbered highlights, trusted category colors, opaque input masks, execution activity, and an execution-stop control.
 - Persistent metadata-minimal broker audit files with synchronous write/flush before authorization; an unavailable audit sink permanently stops the broker instead of allowing unlogged credential use.
 - A read-only historical audit viewer in the owner window, with session/event pagination, explicit refresh for active journals, strict file validation, and bounded corruption/incomplete-tail diagnostics.
-- A Windows prototype task-entry loop with offline reviewed-command mode or optional local/cloud OpenAI-compatible planning. Models can select only the reviewed synthetic registration; owner approval remains separate.
-- A real HTTPS-site fill-only workflow with deterministic field discovery, exact-origin typed login/card records, unchecked individual disclosure approvals, native Windows Hello access, and an owner-only masked live preview. Filled pages remain open under active expiry/revocation.
-- An independent owner-only Vault column for adding exact-origin login/card records before opening a website, authenticated identity listing, and locking the UI while stopping execution. No model vault API or ciphertext export exists.
-- Agent-assisted general form inspection (`InformationSession`, `InformationFlow`, `WindowsInformationVault`, `InformationPlanner`). Discovers visible, explicitly labeled inputs (text, email, tel, url, username, password, select, textarea, date, number). The agent is shown all vault variable names and descriptions across the vault to map which variable goes into what field, while secret values and ciphertexts remain strictly hidden from the model.
-- An interactive missing-information dialogue box that automatically prompts the user whenever the agent needs information that is not available in the vault (e.g. Name on first run, chosen username for a new website), with options to save as a shared profile or site-bound variable.
-- A Windows session monitor for the real-site launcher: session transitions, unavailable/locked desktops, disconnects, channel failure, and stale heartbeats remove authority and request protected-browser closure.
-- Reproducible Windows x64 development setup, hosted Windows verification, and application-only portable packaging with a native launcher, bundled Bun/Chromium/runtime dependencies, required license notices, and SHA-256 checksums. The old in-app marketing/source-site deployment is superseded by the separate homepage repository.
-- Instructions for connecting a [user-supplied OpenAI-compatible API](docs/model-api.md) to the existing bounded synthetic planner, without model installation/hosting setup or expanded authority. Live-provider inference remains unverified until connection details are supplied.
+- Dual operation modes:
+  - **Local Desktop Mode** (`bun start` / `Auto-Mate.exe`): Uses native Windows Hello and DPAPI v2 for exact-origin Login and Payment card autofill in local Chromium. Strictly fill-only; never clicks Login, Pay, or Submit.
+  - **Hosted Mode** (`bun run host` / `Auto-Mate.exe --hosted`): Operates on the host Windows laptop and exposes an invite-only HTTPS web interface via Cloudflare QuickTunnel or a custom reverse proxy (`AUTOMATE_HOSTED_PUBLIC_ORIGIN`). Supports multi-account user registration (operator invite key ≥16 chars, lowercase username `^[a-z0-9][a-z0-9._-]{2,63}$`, passphrase ≥12 chars) protected by memory-hard scrypt ($N=32768, r=8, p=1$) and AES-256-GCM vault encryption. Observation preview renders on the right side on desktop and stacked vertically on mobile. Unchecked field disclosures and dedicated modal confirmation popups for website button clicks (Login, Submit, Next, Pay). Host operator can access active plaintext values in process memory (not zero-knowledge).
+  - An automated Cloudflare QuickTunnel helper that downloads and cryptographically verifies official `cloudflared` release 2026.10.7 for Windows x64 (SHA-256 `2493dbc168923bb3e59e5e7716f71deced92992eea9acd6e9d74f84ac7751343`) when custom origin is unset.
+  - Multi-session server management: supports up to 4 concurrent active sessions, single session per account (signing in replaces previous device), fixed 1-hour auth expiry from sign-in (not inactivity), and 5-second disconnect/background protection that closes the protected website and clears field approvals/one-offs while the account key stays until logout or fixed expiry. Reconnecting receives a fresh state and never resurrects old authority. Polling-based synchronization (`GET /api/updates?after=sequence` at 500 ms; no SSE).
+- Public-only DNS-pinned egress forward proxy: restricts the host browser to port 443 HTTPS and rejects loopback, private networks (RFC 1918), Carrier-Grade NAT (RFC 6598), IPv6 ULA/link-local, and cloud metadata endpoints (`169.254.169.254`).
+- Agent-assisted general form inspection (`InformationSession`, `InformationFlow`, `InformationPlanner`): discovers visible, explicitly labeled inputs (text, email, tel, url, username, password, select, textarea, date, number). The model receives public field descriptors and the account variable catalog (id, name, description, kind, scope, available) to produce a strict flat JSON map `{ [fieldId: string]: string | null }`. Secret values, ciphertexts, full DOM, browser handles, and page URLs are **never sent to the model**. Requires explicit user consent. After a fill or approved website click, external model observation is blocked because the page may echo disclosed values; the user can explicitly choose "Map locally / ask me · No API", with no automatic fallback.
+- An interactive missing-information dialog: prompts the user sequentially when an unknown field needs data, allowing the user to enter it locally, optionally save it encrypted as a Shared profile (non-credentials) or Site-bound variable (mandatory for username/password), skip the field, or cancel/stop execution.
+- Connection to a [user-supplied OpenAI-compatible API](docs/model-api.md) configured in `model-config.json` (`https://nullify-geometric-decathlon.ngrok-free.dev/v1/chat/completions`, model `qwen3.5-9b`). The server exposes `POST /v1/chat/completions` only and does not provide a `/models` endpoint; model identity is unverified (do not claim 9B weights verified). Real metadata-only probes previously passed, but the exact provided endpoint currently returns HTTP 404 (`ERR_NGROK_3200`: ngrok tunnel offline / endpoint not found). No Qwen or Colab setup is provided or required.
 
 The Android vault does **not** execute the TypeScript policy broker. Shared security intent is not the same thing as shared executable code. Android browser automation is not implemented or represented as working.
 
@@ -58,7 +58,7 @@ bun start
 6. Explicitly check each field you allow. Nothing is preselected. Choose a **1, 5, or 15 minute** protected-page lifetime, then click **Approve selected fields & authenticate**. After successful Windows Hello, the trusted executor retrieves the record, rechecks authority/evidence, and fills only those fields.
 7. **Lock vault & stop** clears the owner draft and identity list, revokes website authority, and closes the protected page; it does not delete records. Stop, deny, owner-window closure, or inspecting another destination also end the current flow. Filled pages remain subject to expiry and workstation monitoring; changed evidence ends autofill.
 
-**The app never clicks Login, Pay, or Submit in this flow.** Filling itself discloses data to the receiving website and its scripts; those scripts may react or transmit information without a submit click. Stop cannot undo that disclosure. The executor does not claim account login, order completion, or payment success.
+**Mode-specific button and submission behavior:** In local desktop autofill, the app **never clicks Login, Pay, or Submit**. In hosted mode, users can request website button clicks (Login, Submit, Next, Pay), but **each click requires explicit manual approval via a dedicated modal confirmation popup**. The AI model never clicks buttons or submits forms autonomously. In both modes, filling discloses data to the receiving website and its scripts; Stop cannot undo that disclosure.
 
 ### Records and supported forms
 
@@ -143,17 +143,25 @@ This retains the isolated task-entry demonstration: **Run synthetic registration
 
 Planning alone grants no execution authority. Stop, denial, and window closure abort pending planning; late responses cannot restore authority.
 
-### Optional local or cloud model planning
+### OpenAI-compatible model planning configuration
 
-These provider settings apply only to `bun start --synthetic`, not to real-site autofill. Configure the launching process, then restart that demonstration. No provider is selected or contacted by default. This is a bounded workflow router, not a general-purpose browser-agent tool interface.
+The model integration is used for two specific bounded functions: synthetic registration routing in `bun start --synthetic`, and agent-assisted form inspection (`InformationPlanner`) in `bun start` and Hosted Mode. Deterministic typed record autofill (Login and Payment card) calls no model.
+
+The application includes default configuration in `model-config.json`:
+- `endpoint`: `https://nullify-geometric-decathlon.ngrok-free.dev/v1/chat/completions`
+- `model`: `qwen3.5-9b`
+- `mode`: `cloud`
+
+The server exposes `POST /v1/chat/completions` only and does not advertise a `/models` endpoint; the server model identity is unverified (do not claim 9B weights verified). Real metadata-only probes previously passed, but the exact provided endpoint currently returns HTTP 404 (`ERR_NGROK_3200`). No Qwen or Colab setup is provided, hosted, or required.
+Cloud endpoints strictly require HTTPS (`https://`); genuine loopback (`127.0.0.1`, `localhost`, `[::1]`) permits `http://`. Embedded credentials, query parameters, and URL fragments fail validation.
+Settings can be overridden via environment variables:
 
 | Environment variable | Meaning |
 | --- | --- |
 | `AUTOMATE_PLANNER` | `reviewed` (offline default), `local`, or `cloud` |
 | `AUTOMATE_MODEL_ENDPOINT` | Full OpenAI-compatible chat-completions endpoint; no URL credentials, query, fragment, or redirects |
 | `AUTOMATE_MODEL` | Model identifier served by the configured provider |
-| `AUTOMATE_MODEL_API_KEY` | Bearer credential; required for cloud, optional for local; never displayed in the owner page |
-
+| `AUTOMATE_MODEL_API_KEY` | Bearer credential; required for authenticated providers, optional for unauthenticated endpoints; never displayed in the owner page |
 For an already installed local model server with an OpenAI-compatible API:
 
 ```powershell
@@ -171,8 +179,7 @@ Clicking **Ask model to plan** sends only the typed instruction and a fixed work
 
 The only accepted model outputs are `{"workflow":"synthetic-registration"}` and `{"workflow":"unsupported"}`. Extra authority fields, arbitrary workflows, malformed responses, and oversized responses fail closed. Provider responses are limited to 32 KiB, completion content to 4,096 characters, and requests to 30 seconds; instructions are limited to 2,000 characters. Failure is shown without raw provider diagnostics. There are no automatic retries or fallback to another provider.
 
-Actual model inference remains unverified on this machine: local servers at ports 11434 and 1234 were unavailable, and no cloud provider was used. Isolated protocol fixtures verified valid/invalid responses, transport restrictions, disclosure consent, cancellation, and the actual planning UI. Set `AUTOMATE_PLANNER=reviewed` to use the working offline path.
-
+Real metadata-only probes against the configured endpoint have passed. When using `bun start --synthetic`, set `AUTOMATE_PLANNER=reviewed` to use the working offline path without external network calls.
 
 ## Live Windows preview
 
@@ -203,7 +210,7 @@ The real-site renderer retains the last decoded frame, skips identical image/ann
 
 Geometry and associations are rechecked around captures and before filling. Changed or unsupported evidence halts execution and hides stale marks. This is a conservative check, not a transactional snapshot guarantee against all adversarial rendering. A structural label relationship does not establish the website's trustworthiness, semantic correctness, or the user's consent to disclosure. Pages can imitate decorations inside their own pixels; the application-owned request list and interactive pair selection are the trusted annotation controls.
 
-Android preview remains deferred by the user's Windows-first decision. This is not remote streaming or an Android companion.
+Native Android preview and companion integration remain deferred by the user's Windows-first decision. Hosted mode allows remote web browser access over HTTPS from any mobile or desktop device; native Android browser automation is not implemented.
 
 Build the Android APK with the installed local SDK and JDK:
 
@@ -271,8 +278,18 @@ These are read snapshots, not tamper verification or transactional filesystem sn
 
 `src/workflow.ts` is trusted code. Workflow selectors, success conditions, and optional browser preparation hooks must come from reviewed application code, never from a model or webpage. The browser object and vault adapter remain private to that executor.
 
-Local/cloud provider adapters remain limited to the synthetic workflow. Real-site autofill uses deterministic discovery plus explicit field approval, not model-authored actions. General autonomous browsing, cross-origin embedded payment flows, production authentication/lifecycle verification, OS notifications, and a security-reviewed production approval/process boundary remain outstanding. Models cannot supply selectors, destinations, credential references, or approval authority.
+Local/cloud provider adapters are used for synthetic workflow routing and agent-assisted form mapping (`InformationPlanner`). In form mapping, the model receives only public field descriptors and variable catalog metadata; secret values, ciphertexts, full DOM, browser handles, and page URLs are never sent. The model returns a strict flat JSON map `{ [fieldId: string]: string | null }`. Extra keys, missing keys, markdown fences, and malformed JSON fail closed. Deterministic typed record autofill (Login and Payment card) calls no model.
 
+### Hosted Mode Trust Boundaries
+
+Hosted mode provides remote web access to an automation engine running on the operator's Windows host machine.
+- **Host operator trust**: The host machine runs the browser and stores active decryption keys in process memory during an authenticated session. The host operator and any process with administrative access to the host machine can access active plaintext values in memory. Hosted mode is **not zero-knowledge**.
+- **Protected-page model boundary**: The external model API receives metadata only and requires explicit consent. After a fill or approved website button click, external model observation is blocked because the destination page may echo disclosed secrets; users can explicitly select "Map locally / ask me · No API", with no automatic fallback.
+- **Supplied Model API status**: Configured endpoint in `model-config.json` previously passed real probes, but currently returns 404 ERR_NGROK_3200; model weights identity is unverified (POST `/v1/chat/completions` only; no `/models` endpoint). No Qwen or Colab setup is provided or required.
+- **TLS reverse proxy trust**: Cloudflare edge (in QuickTunnel mode) or the operator's custom reverse proxy terminates TLS.
+- **Target website visibility**: The target website sees network traffic originating from the host laptop's IP address, not the remote user's device IP.
+- **QuickTunnel limits**: Cloudflare QuickTunnel (`*.trycloudflare.com`) is for temporary testing only (no SLA, URLs change on restart, connection limits, polling not SSE). Stable production hosting requires `AUTOMATE_HOSTED_PUBLIC_ORIGIN` and `AUTOMATE_HOSTED_PORT` with a custom reverse proxy.
+- **Local desktop trust separate**: Local Windows Hello and DPAPI mode remains separate with its own local device-bound trust model.
 ## Important limits
 
 - Normal Windows vault operations use the desktop Windows Hello verification API and fail closed unless the OS returns `Verified`. This is an application gate, **not** a cryptographic user-presence requirement imposed on DPAPI itself. Windows 11 build 22000+ and configured Hello are required; positive authentication remains hardware-unverified here.

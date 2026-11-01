@@ -73,14 +73,14 @@ export function validatePlannerConfig(config?: PlannerConfig): ValidatedPlannerC
       throw new PlannerError('PLANNER_CONFIGURATION');
     }
     const rawApiKey = config?.apiKey;
-    if (!rawApiKey || typeof rawApiKey !== 'string' || rawApiKey.trim().length === 0) {
+    if (rawApiKey !== undefined && (typeof rawApiKey !== 'string' || !rawApiKey.trim())) {
       throw new PlannerError('PLANNER_CONFIGURATION');
     }
     return Object.freeze({
       mode,
       model: rawModel.trim(),
       endpoint: parsedUrl.href,
-      apiKey: rawApiKey.trim(),
+      apiKey: rawApiKey?.trim(),
     });
   }
 
@@ -149,6 +149,7 @@ export interface ChatCompletionRequest {
     readonly content: string;
   }[];
   readonly temperature?: number;
+  readonly maxTokens?: number;
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
   readonly maxStreamBytes?: number;
@@ -175,6 +176,7 @@ export async function requestChatCompletion(
     model: options.model,
     messages: options.messages,
     temperature: options.temperature ?? 0,
+    ...(options.maxTokens === undefined ? {} : { max_tokens: options.maxTokens }),
   });
 
   const headers: Record<string, string> = {

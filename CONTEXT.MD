@@ -4,13 +4,22 @@ Consolidated project memory from all available Auto-Mate conversations through t
 
 ## Current user decisions — read these first
 
-1. Continue with the **website**, not a browser extension. The earlier extension idea (including automatic file filling) was explicitly superseded. Do not resume extension development or promise arbitrary file autofill.
-2. Prioritize testing existing features and fixing demonstrated bugs over adding features. The user repeatedly requests correctness; never translate that into a guarantee of zero bugs or perfect security.
-3. The user initially mentioned Qwen3.5-9B hosted on Google Colab, then explicitly clarified: **they will provide an OpenAI-compatible API; do not set up the model**. This later instruction supersedes Colab/model-hosting preparations. Do not download weights, install model-serving software, create notebooks/tunnels, or provision GPUs. Configure and verify the supplied endpoint/model/key when available; no connection details have been supplied yet.
-4. Deployment architecture: **the vault and protected browser stay on each user's Windows PC**; installation is required. The latest distribution decision is a **private application preview** and a separate **public static marketing homepage with a non-interactive simulated video**. Do not publish application source/downloads or expose the owner vault as a hosted multi-tenant service.
-5. Install/verify the software actually needed for supported running/testing. Do not download unrelated GPU/Docker/Android tooling for the Windows website. Never buy cloud compute or change repository visibility without separate authorization.
-6. Keep clear usage instructions in `use.md`, conversation decisions in `CONTEXT.MD`, and create a PR containing the work. Keep the existing application repository private. The separately authorized homepage repository is public; the first application release contains only the application/runtime/license/usage files, never the demo page or film.
-
+1. **Continue with the website, not a browser extension**: The earlier extension idea (including automatic file filling) was explicitly cancelled. Do not resume extension development or promise arbitrary file autofill. Focus strictly on the actual application.
+2. **Prioritize testing and stabilization**: Focus on testing existing features and fixing demonstrated bugs over feature creep. Do not infer extra scope or translate correctness requests into guarantees of zero bugs or perfect security.
+3. **API only; no model setup or hosting**: The user initially mentioned Qwen3.5-9B on Google Colab, then explicitly clarified: **they will provide an OpenAI-compatible API; do not set up the model**. Do not download weights, install model-serving software, create notebooks/tunnels, or provision GPUs. The application is configured with the user-provided API (`https://nullify-geometric-decathlon.ngrok-free.dev/v1/chat/completions`, model `qwen3.5-9b`). The server exposes `POST /v1/chat/completions` only with no `/models` endpoint; model identity is unverified (do not claim 9B weights verified). Real metadata-only probes have passed.
+4. **Download needed software only**: Install/verify software actually needed for supported running/testing: pinned official Bun 1.4.4, Playwright Chromium, and official pinned Cloudflare tunnel helper `cloudflared` v2026.10.7 with SHA-256 verification. Never buy cloud compute, widen Windows firewall rules, or change repository visibility.
+5. **Application-only private release (`v0.1.0-preview.3`)**: The Windows application repository and releases remain **private**. The application release package (`dist/app/Auto-Mate-0.1.0-preview.3-windows-x64.zip`) contains only the application, launcher, bundled runtime, and license files; never include the marketing homepage, demo film, or maintainer context.
+6. **Stop marketing work in app repository**: Marketing work lives exclusively in the separate public repository [Auto-Mate-homepage](https://github.com/anujparwal/Auto-Mate-homepage). Earlier requests for a fake marketing video and full-device-width loop video without controls are historical to that separate repository. Do not rebuild the application to change marketing assets.
+7. **Dual operating modes: Local Desktop vs. Hosted Mode**:
+   - **Local Desktop Mode** (`bun start` / `Auto-Mate.exe`): Uses native Windows Hello and DPAPI v2 on the local Windows PC. Autofill is strictly fill-only; it never clicks Login, Pay, or Submit.
+   - **Hosted Mode** (`bun run host` / `Auto-Mate.exe --hosted`): Approved by the user with four explicit choices:
+     1. *Invite-only registration*: Protected by an operator registration invite key; no open registration.
+     2. *HTTPS Internet link*: Ephemeral Cloudflare QuickTunnel (`https://*.trycloudflare.com`) or custom reverse proxy (`AUTOMATE_HOSTED_PUBLIC_ORIGIN` + `AUTOMATE_HOSTED_PORT`).
+     3. *Remote authentication*: Strictly lowercase ASCII username (3–64 chars, `^[a-z0-9][a-z0-9._-]{2,63}$`, no case-folding) + chosen passphrase (≥12 chars) instead of Windows Hello, which remains for local desktop mode. Each account receives an isolated vault encrypted with AES-256-GCM and memory-hard scrypt ($N=32768, r=8, p=1$). In-memory decryption keys are zeroed upon session close.
+     4. *Fill + separate explicit modal approval for website button clicks*: Remote users observe masked frames in a live right pane. Discovered fields start unchecked and require final confirmation. Website button clicks (Login, Submit, Next, Pay, or destructive) require separate explicit manual approval via a dedicated modal confirmation popup. The AI model never clicks buttons or submits forms autonomously.
+8. **QuickTunnel SSE bug resolution**: Cloudflare QuickTunnel dropped SSE stream bodies (initial stream state arrived locally, but public HTTPS bodies never arrived). Replaced SSE entirely with regular authenticated JSON polling (`GET /api/updates?after=sequence` at 500 ms client poll intervals, with a 5-second disconnect timeout revoking active authority with `stop`). Docs must not promise SSE.
+9. **Variable scope and missing info dialog**: User approved **Shared profiles, site-bound credentials**: general profile variables (names, general text) can be saved as shared profiles; credentials (usernames, passwords) remain strictly site-bound. Sequential missing-info dialog prompts for unknown fields; user enters locally; secret values never reach the model.
+10. **Strict flat JSON model contract**: Form mapping in `InformationPlanner` requires the model to return a flat JSON map `{ [fieldId: string]: string | null }` matching all discovered field IDs to compatible available variable IDs or null. Extra keys, missing keys, markdown fences, and malformed JSON fail closed.
 ## Original product vision (2026-10-30)
 
 The user proposed a secure local/cloud-model browser agent for forms, setup, login, signup, and related tasks, targeting **Windows and Android**. Credentials would remain in an OS-authenticated local vault, never reach the model, and be used only by deterministic trusted code through opaque references.
@@ -129,6 +138,47 @@ The initial wish list also included configurable categories, destination blackli
   - Full test suite passes: **207 passed, 0 failed** across 15 files.
   - Bumped version to `v0.1.0-preview.2` for the newer portable Windows application build.
 
+## Hosted mode, remote HTTPS access, and operator controls (0.1.0-preview.3)
+
+- **User direction and approvals**:
+  - Explicitly approved a separate **Hosted Mode** alongside local desktop Windows Hello mode.
+  - Approved **invite-only registration** protected by an operator registration invite key; no open registration.
+  - Approved **HTTPS Internet access** using an ephemeral Cloudflare QuickTunnel (`https://*.trycloudflare.com`) or custom reverse proxy (`AUTOMATE_HOSTED_PUBLIC_ORIGIN` + `AUTOMATE_HOSTED_PORT`).
+  - Approved **remote authentication** using an Auto-Mate username + chosen passphrase (≥12 chars) and operator invite key (≥16 chars) instead of Windows Hello for hosted sessions; local Hello remains for local desktop mode.
+  - Approved **fill + separate explicit approval for website button clicks**: remote users can request website button actions (Login, Submit, Next, Pay, or destructive), each requiring manual approval in a dedicated confirmation modal popup. Autonomous model clicks and autonomous form submissions are strictly prohibited.
+- **Account validation policy**: Usernames must be strictly lowercase ASCII (3–64 characters, `^[a-z0-9][a-z0-9._-]{2,63}$`); no case-folding or normalization is performed. Passphrases must be at least 12 characters and are never trimmed. Operator invite keys must be at least 16 characters. Wrong invite key fails with HTTP 403 `INVALID_REGISTRATION_KEY`.
+- **Cryptographic storage & host trust**:
+  - Each account has an isolated vault file (`<accountId>.vault`) stored in `%LOCALAPPDATA%\AutoMate\hosted\`.
+  - Key derivation uses memory-hard `scrypt` ($N=32768, r=8, p=1$, maxmem 64 MiB) with an independent 32-byte salt per user.
+  - Domain-separated HMAC-SHA256 subkeys: `authSubkey` for constant-time verifier verification (passphrases never stored), `encSubkey` for AES-256-GCM vault encryption.
+  - Key buffers are zeroed with `.fill(0)` upon explicit logout or fixed 1-hour expiry. Lost passphrases cannot be recovered.
+  - Host operator and any process with administrative access to the host machine can access active plaintext values in host memory during an active session. Hosted mode is not zero-knowledge.
+- **Session lifecycle, disconnect, and layout**:
+  - Server supports up to 4 concurrent active sessions, single session per account (signing in from a new device immediately closes the previous session).
+  - Fixed 1-hour authentication expiry from sign-in (`sessionTtlMs = 3,600,000`), not an inactivity timeout. Activity and polling do not extend this fixed deadline.
+  - Disconnect grace period is 5 seconds (`disconnectGraceMs = 5000`): disconnect or backgrounding > 5s closes the actual website and clears field approvals + one-offs, but the account key stays in memory until explicit logout or fixed 1-hour expiry. Resuming gets fresh state and never resurrects old authority.
+  - Host sleep / suspension interrupts network tunnels and user sessions rather than necessarily terminating the server immediately, but drops connections.
+  - Live observation preview renders on the right side on desktop and stacked vertically on mobile. Observation-only; preview pixels cannot be clicked or typed in.
+  - Live bug caught in production testing: Cloudflare QuickTunnel dropped HTTP Server-Sent Events (SSE) stream bodies (stream state arrived locally on loopback, but public HTTPS bodies never arrived). Replaced SSE entirely with regular authenticated JSON polling (`GET /api/updates?after=sequence` at 500 ms intervals). Docs must not promise SSE.
+- **Network isolation**:
+  - Public-only DNS-pinned forward proxy restricts host browser traffic to port 443 HTTPS.
+  - Rejects loopback (`127.0.0.0/8`, `::1`), private networks (RFC 1918 `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), Carrier-Grade NAT (RFC 6598 `100.64.0.0/10`), link-local and cloud metadata (`169.254.0.0/16`, including `169.254.169.254`), and IPv6 ULA/link-local (`fc00::/7`, `fe80::/10`).
+  - Off-origin requests, downloads, popups, WebSockets, and service workers are disabled or blocked.
+- **Model configuration, protected boundary, and strict flat JSON contract**:
+  - Configured endpoint in `model-config.json`: `https://nullify-geometric-decathlon.ngrok-free.dev/v1/chat/completions`, model `qwen3.5-9b`.
+  - Server provides `POST /v1/chat/completions` only with no `/models` endpoint; model identity is unverified (do not claim 9B weights verified). Real metadata-only probes previously passed, but the exact provided endpoint currently returns HTTP 404 (`ERR_NGROK_3200`: ngrok tunnel offline / endpoint not found).
+  - No Qwen or Colab setup is provided, hosted, or required.
+  - External model planning requires explicit user consent and receives metadata only (public field descriptors and variable catalogs, never secrets or ciphertexts).
+  - Protected-page model boundary: once a fill or approved website button click occurs, external model observation is blocked because the receiving page may echo disclosed secrets; user can explicitly select "Map locally / ask me · No API", with no automatic fallback.
+  - Form mapping (`InformationPlanner`) validates that model output is a strict flat JSON map `{ [fieldId: string]: string | null }` matching all discovered field IDs to compatible available variable IDs or null. Missing or extra keys fail closed.
+- **Cloudflare tunnel helper binary**:
+  - Downloads and verifies official Cloudflare release 2026.10.7 Windows x64 binary (`cloudflared-windows-amd64.exe`, SHA-256 `2493dbc168923bb3e59e5e7716f71deced92992eea9acd6e9d74f84ac7751343`, 55,390,512 bytes) cached in `%LOCALAPPDATA%\AutoMate\tools`.
+- **Trust boundaries**:
+  - Host operator and TLS reverse proxy have access to active process memory and plaintext values. Hosted mode is not zero-knowledge.
+  - QuickTunnel is for temporary testing only (no SLA, URLs change on restart, connection limits, polling not SSE); production requires stable reverse proxy configuration (`AUTOMATE_HOSTED_PUBLIC_ORIGIN` + `AUTOMATE_HOSTED_PORT`).
+  - Local desktop Windows Hello/DPAPI trust remains separate.
+- **Version target**: `v0.1.0-preview.3` private application preview. App-only release; marketing homepage and demo film excluded. Existing `v0.1.0-preview.2` release remains immutable.
+- **Record of decisions**: Context contains only recorded decisions and verified system state, with no invented conversation transcripts.
 ## Current boundaries that must not regress
 
 - Models cannot access plaintext, ciphertext exports, vault listings, browser handles, owner pixels, or grant APIs. Approval authorizes trusted insertion, not secret delivery to AI.

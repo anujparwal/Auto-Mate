@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { informationKindsCompatible, type InformationField, type InformationMapping, type InformationPlanInput, type InformationVariable, type InformationVariableInput, type InformationVault } from './information-contract';
+import { InformationPlanner } from './information-planner';
 
 export interface InformationPlanningClient {
   readonly mode: 'reviewed' | 'local' | 'cloud';
@@ -88,13 +89,14 @@ export class InformationFlow {
     this.#planned = false; this.#mappings.clear(); this.#values.clear(); this.#skipped.clear(); this.#request = undefined;
     this.#oneOffAuthenticated = false;
   }
-  async plan(shareMetadata: boolean): Promise<void> {
+  async plan(shareMetadata: boolean, localOnly = false): Promise<void> {
     const epoch = this.#epoch; this.#check(epoch);
     if (!this.#catalogLoaded || this.#catalogStale || this.#request) throw new Error('INFORMATION_CATALOG_REQUIRED');
-    if (this.#planner.mode !== 'reviewed' && !shareMetadata) throw new Error('INFORMATION_CONSENT_REQUIRED');
+    const planner = localOnly ? new InformationPlanner({ mode: 'reviewed' }) : this.#planner;
+    if (planner.mode !== 'reviewed' && !shareMetadata) throw new Error('INFORMATION_CONSENT_REQUIRED');
     const controller = new AbortController(); this.#planning = controller;
     try {
-      const mappings = await this.#planner.plan({ fields: this.#fields, variables: this.#variables }, controller.signal);
+      const mappings = await planner.plan({ fields: this.#fields, variables: this.#variables }, controller.signal);
       this.#check(epoch);
       if (controller.signal.aborted || mappings.length !== this.#fields.length || new Set(mappings.map(mapping => mapping.fieldId)).size !== this.#fields.length) throw new Error('PLANNER_INVALID_RESPONSE');
       for (const mapping of mappings) {

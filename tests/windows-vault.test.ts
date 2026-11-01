@@ -299,6 +299,8 @@ windowsSuite('WindowsAutofillVault & WindowsPasswordStore (Native DPAPI Syntheti
         recordId: 'var:ApiKey',
         expectedKind: 'text',
         expectedScope: 'site',
+        expectedName: 'ApiKey',
+        expectedDescription: 'Test API key',
       },
     );
     expect(resolveRes.success).toBe(true);
