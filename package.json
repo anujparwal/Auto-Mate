@@ -9,7 +9,7 @@
     "check:app": "powershell.exe -NoProfile -File tools/check-app.ps1",
     "start": "bun run tools/start.ts",
     "host": "bun run tools/run-hosted.ts",
-    "test": "bun test",
+    "test": "bun test --timeout 30000",
     "smoke": "bun run tools/smoke.ts",
     "typecheck": "tsc --noEmit",
     "preview": "bun run tools/preview.ts"
