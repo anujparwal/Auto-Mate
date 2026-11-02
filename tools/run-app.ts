@@ -10,10 +10,9 @@ try {
     await runHosted([]);
   } else {
     const app = await openAutofillApp();
-    console.log('Auto-Mate website autofill opened. Inspect an HTTPS website, choose a vault record, and approve individual fields.');
-    console.log('Normal vault operations require Windows Hello. No model receives vault values, pages, or preview frames.');
-    console.log('Fill only: the app does not click Login, Pay, or Submit. Filling itself discloses data to website scripts.');
-    console.log('Development software: use public test forms and fictitious data until your hardware authentication and lifecycle behavior are verified.');
+    console.log('Auto-Mate agent workspace opened.');
+    console.log('Interactive browser agent with host-redacted observations, live preview, vault grants, and encrypted workspace storage.');
+    console.log('Local vault operations require Windows Hello verification. Configure OpenAI-compatible model API in Settings.');
     console.log('Metadata-safe audit journal: ' + app.auditPath);
     try { await app.closed; } finally { await app.close(); }
   }

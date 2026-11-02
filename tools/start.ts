@@ -1,35 +1,24 @@
-import { TaskPlanner } from '../src/task-planner';
-import { openPreviewDemo } from './preview';
 import { openAutofillApp } from '../src/autofill-owner';
 import { runHosted } from './run-hosted';
-
 try {
   const args = process.argv.slice(2);
-  if (args.length > 1 || (args.length === 1 && args[0] !== '--synthetic' && args[0] !== '--hosted')) {
+  if (args.length > 1 || (args.length === 1 && args[0] !== '--hosted')) {
     throw new Error('INVALID_START_ARGUMENT');
   }
   if (args[0] === '--hosted') {
     await runHosted([]);
-  } else if (args[0] === '--synthetic') {
-    const app = await openPreviewDemo({ planner: TaskPlanner.fromEnvironment() });
-    console.log('Auto-Mate synthetic prototype opened. Normal vaults and real websites are not used.');
-    console.log('Metadata-safe audit journal: ' + app.auditPath);
-    try { await app.owner.closed; } finally { await app.close(); }
   } else {
     const app = await openAutofillApp();
-    console.log('Auto-Mate website autofill opened. Inspect an HTTPS website, choose a vault record, and approve individual fields.');
-    console.log('Normal vault operations require Windows Hello. No model receives vault values, pages, or preview frames.');
-    console.log('Fill only: the app does not click Login, Pay, or Submit. Filling itself discloses data to website scripts.');
-    console.log('Development software: use public test forms and fictitious data until your hardware authentication and lifecycle behavior are verified.');
+    console.log('Auto-Mate agent workspace opened.');
+    console.log('Interactive browser agent with host-redacted observations, live preview, vault grants, and encrypted workspace storage.');
+    console.log('Local vault operations require Windows Hello verification. Configure OpenAI-compatible model API in Settings.');
     console.log('Metadata-safe audit journal: ' + app.auditPath);
     try { await app.closed; } finally { await app.close(); }
   }
 } catch (error) {
   const code = error instanceof Error ? error.message : '';
-  if (code === 'PLANNER_CONFIGURATION') {
-    console.error('Planner configuration rejected. Check the synthetic model-planning settings in README.md.');
-  } else if (code === 'INVALID_START_ARGUMENT') {
-    console.error('Usage: bun start [--synthetic | --hosted]');
+  if (code === 'INVALID_START_ARGUMENT') {
+    console.error('Usage: bun start [--hosted]');
   } else if (process.argv.slice(2)[0] === '--hosted') {
     console.error('Auto-Mate hosted service could not start or close safely: ' + (error instanceof Error ? error.message : String(error)));
   } else {

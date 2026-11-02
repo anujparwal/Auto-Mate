@@ -3,181 +3,369 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Auto-Mate · Vault and approved autofill</title>
+  <title>Auto-Mate · Conversational Agent &amp; Protected Browser</title>
   <link rel="stylesheet" href="/owner-preview.css">
   <link rel="stylesheet" href="/autofill.css">
   <script src="/autofill.js" defer></script>
 </head>
 <body>
   <header class="app-header">
-    <div class="identity"><strong>Auto-Mate</strong><span>Vault &amp; website autofill</span></div>
-    <span class="boundary">Owner approval · Vault values stay out of AI</span>
+    <div class="identity">
+      <strong>Auto-Mate</strong>
+      <span>Conversational Agent &amp; Protected Browser</span>
+    </div>
+    <div class="header-controls">
+      <div id="hosted-session" hidden>
+        <span id="hosted-user" class="user-badge"></span>
+        <button id="hosted-logout" type="button" class="compact-button">Sign out</button>
+      </div>
+      <button id="open-settings-btn" type="button" class="compact-button" title="Settings">⚙️ Settings</button>
+    </div>
   </header>
-  <main>
-    <section class="task-heading">
-      <div><h1>Your vault. Your approval.</h1><p>Store data privately, then approve individual disclosures.</p></div>
-      <div id="hosted-session" hidden><span id="hosted-user"></span><button id="hosted-logout" type="button">Sign out &amp; close browser</button></div>
-      <button id="stop" type="button">Stop &amp; close website</button>
-    </section>
-    <p id="authentication-notice" class="approval-notice"><strong>Development software.</strong> Local mode requires Windows Hello for vault operations. Filling discloses approved data to the website and its scripts; Stop cannot undo that disclosure. No autonomous submissions.</p>
-    <div class="task-meta"><span id="destination">No website open</span><span id="phase" role="status" aria-live="polite">Ready</span></div>
-    <div id="error" class="approval-error" role="alert" hidden></div>
-    <p id="message" role="status" aria-live="polite"></p>
 
-    <div class="autofill-workspace">
-      <aside id="vault-column" class="approval-card vault-column" aria-labelledby="vault-heading">
-        <div class="vault-heading"><h2 id="vault-heading">Vault</h2><span id="vault-status" class="approval-badge">Metadata locked</span></div>
-        <p id="vault-authentication-notice" class="approval-notice">Add a login, card, or named variable. Local vault operations require Windows Hello; hosted operations require your active key-authenticated session.</p>
-        <p class="vault-boundary"><strong>AI boundary:</strong> only explicitly consented variable metadata is shared. Values, encrypted vault files, and preview images are not model inputs. Names and descriptions can themselves contain personal data.</p>
-        <form id="save-form" class="vault-form" autocomplete="off">
-          <label for="vault-origin">Allowed HTTPS origin</label>
-          <input id="vault-origin" type="url" required maxlength="2048" placeholder="https://example.com" autocomplete="off">
-          <button id="vault-use-origin" class="compact-button" type="button" disabled>Use inspected site</button>
-          <label for="vault-kind">Record type</label>
-          <select id="vault-kind"><option value="login">Login</option><option value="card">Payment card</option><option value="variable">Named variable</option></select>
-          <label for="vault-record-id">Record ID</label>
-          <input id="vault-record-id" required maxlength="320" autocomplete="off" placeholder="A name you recognize">
-          <div id="login-fields" class="vault-values">
-            <label for="save-username">Username / email</label>
-            <input id="save-username" maxlength="320" autocomplete="off">
-            <label for="save-password">Password</label>
-            <input id="save-password" type="password" maxlength="4096" autocomplete="new-password">
+  <!-- Global Alert / Error Banner -->
+  <div id="global-error-banner" class="global-error-banner" role="alert" hidden>
+    <span class="error-icon" aria-hidden="true">⚠️</span>
+    <span id="global-error-text"></span>
+    <button id="global-error-dismiss" type="button" class="close-x-btn" aria-label="Dismiss error">✕</button>
+  </div>
+
+  <main class="main-container">
+    <div class="agent-workspace">
+      <!-- 1. Left Box: Chats between user and agent -->
+      <section class="chat-column" aria-label="Chats between user and agent">
+        <div class="column-header">
+          <h2>Chats between the user and the agent</h2>
+          <span id="agent-status-badge" class="status-badge idle">Ready</span>
+        </div>
+        <div id="chat-messages" class="chat-messages" role="log" aria-live="polite">
+          <div class="chat-bubble assistant intro">
+            <p>👋 Hello! I am your <strong>Auto-Mate Agent</strong>.</p>
+            <p>Tell me what you'd like me to research, compare, or buy on the web (e.g., <em>"Go to amazon.in, compare speakers under 2000 rupees and recommend the best one"</em>).</p>
+            <p class="privacy-note"><strong>Keep secrets out of chat and memory.</strong> Use private dialogs and the vault instead. The selected model receives your messages, enabled memory, variable names/descriptions and redacted page text—not vault values or screenshots. A malicious site can encode private values to evade redaction. Review every sensitive action.</p>
           </div>
-          <div id="card-fields" class="vault-values" hidden>
-            <label for="save-cardholder">Name on card</label>
-            <input id="save-cardholder" maxlength="200" autocomplete="off">
-            <label for="save-card-number">Card number</label>
-            <input id="save-card-number" type="password" inputmode="numeric" maxlength="24" autocomplete="off">
-            <div class="vault-expiry">
-              <label>Expiry month<input id="save-month" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="MM"></label>
-              <label>Expiry year<input id="save-year" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="YYYY"></label>
+        </div>
+        <form id="chat-form" class="chat-input-form" autocomplete="off">
+          <input id="chat-prompt-input" type="text" placeholder="Type your instruction for the agent..." required autocomplete="off">
+          <button id="chat-send-btn" type="submit" class="primary">Send</button>
+          <button id="chat-stop-btn" type="button" class="danger-btn" disabled>Stop</button>
+        </form>
+      </section>
+
+      <!-- 2. Right Column (Two Stacked Boxes matching Interface.png) -->
+      <div class="right-column">
+        <!-- Top Box: Live Preview -->
+        <section class="live-preview-box" aria-label="Live Preview">
+          <div class="column-header">
+            <h2>Live Preview</h2>
+            <div class="header-badges">
+              <span id="active-origin-badge" class="badge origin-badge" hidden></span>
+              <span id="frame-status-badge" class="status-badge">Live · Masked Browser</span>
             </div>
           </div>
-          <div id="variable-fields" class="vault-values" hidden>
-            <label for="save-var-name">Variable name</label>
-            <input id="save-var-name" maxlength="80" autocomplete="off" placeholder="e.g. Legal Name">
-            <label for="save-var-desc">Description (helps the agent map it)</label>
-            <input id="save-var-desc" maxlength="500" autocomplete="off" placeholder="e.g. Full legal first and last name for registrations">
-            <label for="save-var-val">Value (stored encrypted, never sent to AI)</label>
-            <input id="save-var-val" maxlength="4096" autocomplete="off" placeholder="Value">
-            <label for="save-var-kind">Data kind</label>
-            <select id="save-var-kind">
-              <option value="text">General text</option>
-              <option value="username">Username</option>
+          <div id="frame-shell" class="frame-shell">
+            <p id="frame-empty" class="waiting">No browser activity yet. Send an instruction to start the live agent stream.</p>
+            <div id="canvas" hidden>
+              <img id="frame-image" alt="Masked live agent preview">
+            </div>
+          </div>
+        </section>
+
+        <!-- Bottom Box: Vault and permissions -->
+        <section class="vault-permissions-box" aria-label="Vault and permissions">
+          <div class="column-header">
+            <h2>Vault and permissions</h2>
+            <div class="tab-controls">
+              <button id="tab-variables-btn" type="button" class="tab-btn active">Variables</button>
+              <button id="tab-permissions-btn" type="button" class="tab-btn">Ongoing Permissions</button>
+              <button id="tab-notes-btn" type="button" class="tab-btn">Notes Space</button>
+              <button id="open-add-var-btn" type="button" class="compact-button">+ Add Variable</button>
+            </div>
+          </div>
+
+          <!-- Variables List Tab -->
+          <div id="tab-variables-panel" class="tab-panel">
+            <div id="vault-variables-list" class="items-list">
+              <p class="empty-hint">Loading vault variables...</p>
+            </div>
+          </div>
+
+          <!-- Permissions Tab -->
+          <div id="tab-permissions-panel" class="tab-panel" hidden>
+            <div class="grants-quick-action" id="grants-quick-action">
+              <div class="quick-grant-row">
+                <span id="quick-grant-origin-label" class="quick-grant-label">Grant to active site:</span>
+                <select id="quick-grant-select" aria-label="Select variable or group to grant">
+                  <option value="">-- Select Variable or Group --</option>
+                </select>
+                <button id="quick-grant-submit-btn" type="button" class="compact-button primary" disabled>Grant</button>
+              </div>
+            </div>
+            <p class="approval-notice">Pre-authorized domains can access specific vault variables without separate popups:</p>
+            <div id="ongoing-permissions-list" class="items-list">
+              <p class="empty-hint">No direct permissions granted yet.</p>
+            </div>
+          </div>
+
+          <!-- Notes Space Tab -->
+          <div id="tab-notes-panel" class="tab-panel" hidden>
+            <p class="approval-notice">Live research notes recorded by the orchestrator and evaluator subagents:</p>
+            <div id="notes-space-list" class="items-list">
+              <p class="empty-hint">No notes taken yet.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- 1. Pending Permission Modal (WorkspacePermission) -->
+    <dialog id="permission-modal" class="approval-card info-dialog" aria-labelledby="perm-title">
+      <div class="dialog-content">
+        <div class="dialog-header-row">
+          <h3 id="perm-title">Action Permission Requested</h3>
+          <span id="perm-type-badge" class="badge"></span>
+        </div>
+        <p id="perm-origin" class="permission-origin"></p>
+        <div class="permission-details">
+          <p id="perm-label" class="perm-label-text"></p>
+          <p id="perm-desc" class="perm-desc-text"></p>
+          <div id="perm-meta" class="perm-meta-box"></div>
+        </div>
+        <div id="perm-grant-controls" class="form-group" hidden>
+          <label for="perm-grant-scope">Host-only direct filling for this task</label>
+          <select id="perm-grant-scope"></select>
+          <button id="perm-grant-btn" type="button" class="secondary">Allow selected variable/group for this task</button>
+          <p class="field-hint">Does not approve clicks or reveal values to the model. Revoke under Permissions. Native Windows reads still require Windows Hello.</p>
+        </div>
+        <div class="task-plan-actions dialog-actions">
+          <button id="perm-allow-btn" type="button" class="primary">Allow Action</button>
+          <button id="perm-deny-btn" type="button" class="secondary">Deny</button>
+          <button id="perm-stop-btn" type="button" class="danger-btn">Stop Agent</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 2. Unknown Information / Missing Credential Dialog (WorkspaceInformationRequest) -->
+    <dialog id="credential-modal" class="approval-card info-dialog" aria-labelledby="cred-title">
+      <form id="credential-form" method="dialog">
+        <h3 id="cred-title">Direct Information Entry</h3>
+        <p id="cred-origin-banner" class="permission-origin"></p>
+        <p class="approval-notice">
+          The agent needs information for a website field. Enter the value directly below.
+          <strong>Values are protected on the host and never sent to AI prompts.</strong>
+        </p>
+
+        <div class="form-group">
+          <label for="cred-name-input">Variable / Field Name</label>
+          <input id="cred-name-input" type="text" required maxlength="80">
+        </div>
+
+        <div class="form-group">
+          <label for="cred-desc-input">Description</label>
+          <input id="cred-desc-input" type="text" required maxlength="500">
+        </div>
+
+        <div class="form-group">
+          <label id="cred-input-label" for="cred-value-input">Secret Value</label>
+          <input id="cred-value-input" type="password" required autocomplete="off" placeholder="Value is kept private">
+        </div>
+
+        <div class="dialog-save-section">
+          <label class="category-choice">
+            <input id="cred-save-check" type="checkbox" checked>
+            <span>Save to encrypted vault for future access</span>
+          </label>
+          <div id="cred-save-details" class="dialog-save-details">
+            <label for="cred-var-scope">Scope</label>
+            <select id="cred-var-scope">
+              <option value="site" selected>Site-bound (restricted to this website)</option>
+              <option value="profile">Shared profile (reusable across websites)</option>
+            </select>
+            <p id="cred-scope-notice" class="field-hint"></p>
+          </div>
+        </div>
+
+        <div class="task-plan-actions dialog-actions">
+          <button id="cred-provide-btn" class="primary" type="submit">Fill securely &amp; resume</button>
+          <button id="cred-skip-btn" type="button" class="secondary">Skip</button>
+          <button id="cred-stop-btn" type="button" class="danger-btn">Stop Agent</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 3. Add Variable Modal -->
+    <dialog id="add-variable-modal" class="approval-card info-dialog" aria-labelledby="add-var-title">
+      <form id="add-variable-form" method="dialog">
+        <div class="dialog-header-row">
+          <h3 id="add-var-title">Add Encrypted Vault Variable</h3>
+          <button id="close-add-var-x" type="button" class="close-x-btn" aria-label="Close">✕</button>
+        </div>
+
+        <div class="form-group">
+          <label for="new-var-name">Variable Name <span class="required-star">*</span></label>
+          <input id="new-var-name" required maxlength="80" placeholder="e.g. Amazon Login, Checkout Email">
+        </div>
+
+        <div class="form-group">
+          <label for="new-var-desc">Description <span class="required-star">*</span></label>
+          <input id="new-var-desc" required maxlength="500" placeholder="e.g. Primary credentials for shopping">
+        </div>
+
+        <div class="form-group">
+          <label for="new-var-val">Secret Value <span class="required-star">*</span></label>
+          <input id="new-var-val" type="password" required maxlength="4096" placeholder="Value encrypted on host · never sent to model" autocomplete="off">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group half-width">
+            <label for="new-var-kind">Kind</label>
+            <select id="new-var-kind">
               <option value="password">Password</option>
+              <option value="username">Username</option>
               <option value="email">Email</option>
+              <option value="text">Text</option>
               <option value="tel">Phone</option>
               <option value="url">URL</option>
               <option value="date">Date</option>
               <option value="number">Number</option>
             </select>
-            <label for="save-var-scope">Scope</label>
-            <select id="save-var-scope">
-              <option value="profile">Shared profile (reusable across sites)</option>
-              <option value="site">Site-bound (restricted to allowed origin)</option>
+          </div>
+
+          <div class="form-group half-width">
+            <label for="new-var-scope">Scope</label>
+            <select id="new-var-scope">
+              <option value="site" selected>Site-bound</option>
+              <option value="profile">Shared Profile</option>
             </select>
           </div>
-          <button id="save-record" class="primary" type="submit" disabled>Authenticate &amp; save encrypted record</button>
-        </form>
-        <p class="approval-notice">An existing ID is replaced only for this exact origin. CVV, PINs, and OTPs are not stored. Values clear from this form when sent; an already-started native save cannot be rolled back by Stop.</p>
-        <div class="vault-actions">
-          <button id="vault-list" type="button" disabled>Authenticate &amp; list IDs</button>
-          <button id="vault-lock" type="button">Lock vault &amp; stop</button>
         </div>
-        <label class="vault-records-label" for="vault-records">Owner-only record identities</label>
-        <select id="vault-records" disabled><option value="">Metadata locked</option></select>
-        <button id="vault-use-record" class="compact-button" type="button" disabled>Use this ID for website approval</button>
-        <p id="vault-message" class="vault-message" role="status" aria-live="polite"></p>
-        <div id="vault-error" class="approval-error" role="alert" hidden></div>
-      </aside>
 
-      <section class="website-column" aria-label="Website inspection and approved filling">
-        <section class="approval-card" aria-labelledby="website-heading">
-          <h2 id="website-heading">1. Inspect a website · No vault access</h2>
-          <form id="inspect-form" class="autofill-grid">
-            <label>HTTPS page URL<input id="website-url" type="url" required maxlength="2048" value="https://the-internet.herokuapp.com/login" autocomplete="off"></label>
-            <label>Record type<select id="record-kind"><option value="login" selected>Login</option><option value="card">Payment card</option><option value="information">All form fields (Agent assisted)</option></select></label>
-            <button id="inspect" type="submit">Inspect website</button>
-          </form>
-          <div class="task-plan-actions"><button id="example-login" type="button">Public login test</button><button id="example-card" type="button">Public card test</button></div>
-          <p class="approval-notice">The website runs in an isolated browser; its masked live view appears alongside these controls. Only uniquely labelled fields are supported. Off-origin redirects, embedded forms, CAPTCHA, and MFA are not bypassed.</p>
-        </section>
-        <section class="approval-card" aria-labelledby="approval-heading">
-          <h2 id="approval-heading">2. Approve individual disclosures</h2>
-          <div id="information-banner" class="information-banner" hidden>
-            <p class="vault-boundary"><strong>Agent boundary:</strong> review all variable names and descriptions below, then explicitly consent to sharing this metadata for field mapping. Vault values are never retrieved for model planning. Unknown information opens a user-entry dialog.</p>
-            <p id="info-provider" class="approval-notice"></p>
-            <div class="task-plan-actions">
-              <button id="info-load-catalog" type="button">1. Authenticate &amp; list vault variables</button>
+        <div class="form-group" id="new-var-origin-group">
+          <label for="new-var-origin">Website Origin <span class="required-star" id="origin-required-star">*</span></label>
+          <div class="input-with-button">
+            <input id="new-var-origin" type="text" placeholder="https://example.com" required>
+            <button id="new-var-use-current-origin" type="button" class="compact-button">Use Current Site</button>
+          </div>
+          <p id="new-var-origin-hint" class="field-hint">Mandatory for site-bound variables (e.g. https://amazon.in)</p>
+        </div>
+
+        <div class="task-plan-actions dialog-actions">
+          <button type="submit" class="primary">Save Encrypted Variable</button>
+          <button id="close-add-var-btn" type="button">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 4. Settings Dialog -->
+    <dialog id="settings-modal" class="approval-card info-dialog settings-dialog" aria-labelledby="settings-title">
+      <form id="settings-form" method="dialog">
+        <div class="dialog-header-row">
+          <h2 id="settings-title">Workspace Settings</h2>
+          <button id="close-settings-x" type="button" class="close-x-btn" aria-label="Close settings">✕</button>
+        </div>
+
+        <!-- Model Settings -->
+        <fieldset class="settings-group">
+          <legend>Model Configuration</legend>
+          <div class="form-row">
+            <div class="form-group half-width">
+              <label for="setting-model-preset">Provider Preset</label>
+              <select id="setting-model-preset">
+                <option value="openai">OpenAI (Cloud)</option>
+                <option value="groq">Groq (Cloud)</option>
+                <option value="openrouter">OpenRouter (Cloud)</option>
+                <option value="ollama">Ollama (Localhost)</option>
+                <option value="lmstudio">LM Studio (Localhost)</option>
+                <option value="custom">Custom (OpenAI-compatible)</option>
+              </select>
             </div>
-            <details id="info-catalog-details" class="info-catalog-details" hidden>
-              <summary>Review vault metadata before sharing (<span id="info-catalog-count">0</span> variables)</summary>
-              <div id="info-catalog-list" class="info-catalog-list"></div>
-            </details>
-            <div id="info-plan-controls" class="task-plan-actions" hidden>
-              <label id="info-consent-row" class="category-choice" hidden>
-                <input id="info-consent" type="checkbox">
-                <span>I consent to sending field labels and vault variable names/descriptions to the configured model.</span>
-              </label>
-              <button id="info-plan" class="primary" type="button">2. Ask Agent to map fields</button>
-              <button id="info-plan-local" type="button">Map locally / ask me · No API</button>
+            <div class="form-group half-width">
+              <label for="setting-model-mode">Mode</label>
+              <select id="setting-model-mode">
+                <option value="cloud">Cloud API</option>
+                <option value="local">Local Instance</option>
+              </select>
             </div>
           </div>
-          <dialog id="info-dialog" class="approval-card info-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-prompt">
-            <form id="info-dialog-form" method="dialog">
-              <h3 id="dialog-title">Agent requested information</h3>
-              <p id="dialog-prompt" class="approval-notice"></p>
-              <div id="dialog-input-container"></div>
-              <div class="dialog-save-section">
-                <label class="category-choice"><input id="dialog-save-check" type="checkbox"><span>Save this to vault for future use</span></label>
-                <div id="dialog-save-details" class="dialog-save-details" hidden>
-                  <label for="dialog-var-name">Variable name</label>
-                  <input id="dialog-var-name" maxlength="80" placeholder="e.g. Preferred Username">
-                  <label for="dialog-var-desc">Description</label>
-                  <input id="dialog-var-desc" maxlength="500" placeholder="e.g. Username chosen for this account">
-                  <label for="dialog-var-scope">Scope</label>
-                  <select id="dialog-var-scope">
-                    <option value="profile">Shared profile</option>
-                    <option value="site">Site-bound (this site only)</option>
-                  </select>
-                </div>
-              </div>
-              <div class="task-plan-actions dialog-actions">
-                <button id="dialog-provide" class="primary" type="submit">Use locally &amp; continue</button>
-                <button id="dialog-skip" type="button">Skip this field</button>
-                <button id="dialog-cancel" type="button">Cancel &amp; stop</button>
-              </div>
-            </form>
-          </dialog>
-          <label class="approval-label" for="record-id">Vault record ID for this destination</label>
-          <input id="record-id" maxlength="320" autocomplete="off" placeholder="Enter a known ID or use the Vault column" disabled>
-          <p id="record-selection-status" class="approval-notice">Selecting a record ID does not approve any disclosure.</p>
-          <p class="approval-notice">Nothing is preselected. Each checked field authorizes disclosure only to the exact destination above. A legacy password record uses its ID as the username.</p>
-          <div id="fields"><p class="waiting">Inspect a supported website to see verified requesting text and fields.</p></div>
-          <div class="task-plan-actions">
-            <label>Protected page lifetime<select id="duration"><option value="60">1 minute</option><option value="300">5 minutes</option><option value="900">15 minutes</option></select></label>
-            <button id="fill" class="primary" type="button" disabled>Approve selected fields &amp; authenticate</button>
-            <button id="deny" type="button" disabled>Deny &amp; close website</button>
+
+          <div class="form-group">
+            <label for="setting-model-endpoint">Base API URL</label>
+            <input id="setting-model-endpoint" type="url" required placeholder="https://api.openai.com/v1">
           </div>
-          <p class="approval-notice">Approval never exposes values to the model. Local fills require Windows Hello; hosted fills use your authenticated session. Hosted website buttons require a separate permission popup for each click.</p>
-        </section>
-      </section>
-      <section class="approval-card website-preview" aria-labelledby="preview-heading">
-          <div class="preview-heading"><h2 id="preview-heading">Live protected website</h2><span id="frame-status">Waiting for inspection</span></div>
-          <p class="approval-notice">Read-only owner preview. Dashed boxes mark requesting text; solid boxes mark fields. Matching numbers connect each pair. Controls and embedded frames are masked outside the website; these pixels never go to AI.</p>
-          <section id="website-action-panel" hidden aria-labelledby="website-action-heading">
-            <h3 id="website-action-heading">Website buttons · Separate approval required</h3>
-            <p class="approval-notice">A button may submit data, navigate, purchase, or delete. Requesting a click does not execute it; review the permission popup first.</p>
-            <div id="website-actions" class="task-plan-actions"></div>
-          </section>
-          <div id="frame-shell"><p id="frame-empty" class="waiting">No website frame yet.</p><div id="canvas" hidden><img id="frame-image" alt="Masked protected website"><div id="annotations"></div></div></div>
-        </section>
-    </div>
-    <p class="approval-notice">Authorization events use the metadata-minimal journal; URLs, record IDs, values, and card data are not included. No autonomous submission: hosted button clicks require a distinct explicit approval.</p>
-    <dialog id="permission-dialog" class="approval-card info-dialog" aria-labelledby="permission-title" aria-describedby="permission-body">
-      <h2 id="permission-title">Permission required</h2>
-      <p id="permission-body" class="approval-notice"></p>
-      <div class="task-plan-actions dialog-actions"><button id="permission-deny" type="button" autofocus>Deny</button><button id="permission-approve" class="primary" type="button">Approve once</button><button id="permission-stop" type="button">Stop website</button></div>
+
+          <div class="form-group">
+            <div class="label-with-badge">
+              <label for="setting-model-apikey">API Key</label>
+              <span id="setting-key-status" class="key-status-badge">Key not configured</span>
+            </div>
+            <div class="input-with-button">
+              <input id="setting-model-apikey" type="password" placeholder="Leave blank to keep unchanged" autocomplete="off">
+              <button id="setting-clear-apikey-btn" type="button" class="compact-button danger-text">Clear Key</button>
+            </div>
+            <p class="field-hint">Never stored in browser localStorage. Kept encrypted on host only.</p>
+          </div>
+
+          <div class="form-group">
+            <label for="setting-model-name">Model Name</label>
+            <input id="setting-model-name" list="model-presets-datalist" type="text" required placeholder="Select preset or type custom model name">
+            <datalist id="model-presets-datalist">
+              <!-- populated dynamically based on preset -->
+            </datalist>
+          </div>
+          <p class="field-hint">Enter the exact served model ID. Suggestions are not model discovery or an availability guarantee. Hosted accounts use cloud HTTPS endpoints; loopback models are desktop-only.</p>
+        </fieldset>
+
+        <!-- Navigation Security Policy -->
+        <fieldset class="settings-group">
+          <legend>Navigation Security Policy</legend>
+          <div class="radio-row">
+            <label><input type="radio" name="nav-mode" value="whitelist"> Whitelist Mode (Agent can ONLY visit allowed sites)</label>
+            <label><input type="radio" name="nav-mode" value="blacklist" checked> Blacklist Mode (Agent can visit all sites EXCEPT blocked)</label>
+          </div>
+          <label for="setting-nav-domains">Domains (comma or line-separated):</label>
+          <textarea id="setting-nav-domains" rows="2" placeholder="amazon.in, flipkart.com, google.com"></textarea>
+        </fieldset>
+
+        <!-- Permanent Memory -->
+        <fieldset class="settings-group">
+          <legend>Permanent Memory (Opt-in)</legend>
+          <label class="category-choice">
+            <input id="setting-memory-toggle" type="checkbox">
+            <span>Enable Permanent Memory for preferences &amp; context</span>
+          </label>
+          <div id="setting-memory-container">
+            <label for="setting-memory-content">Remembered Context &amp; Preferences:</label>
+            <textarea id="setting-memory-content" rows="3" placeholder="Preferences remembered across sessions (e.g. preferred shopping brands, default budget limits, delivery postal code)..."></textarea>
+          </div>
+        </fieldset>
+
+        <!-- Variable Groups -->
+        <fieldset class="settings-group">
+          <legend>Variable Groups</legend>
+          <p class="field-hint">Define groups of variables for bulk grants to trusted domains.</p>
+          <div id="settings-groups-list" class="settings-groups-list">
+            <p class="empty-hint">No variable groups configured.</p>
+          </div>
+          <div class="add-group-box">
+            <h4>Create New Group</h4>
+            <div class="form-group">
+              <input id="new-group-name" type="text" placeholder="Group name (e.g. Checkout Info, Work Identity)" maxlength="60">
+            </div>
+            <div class="form-group">
+              <label>Select Member Variables:</label>
+              <div id="new-group-variables-select" class="group-variables-checklist">
+                <p class="empty-hint">No variables available to add.</p>
+              </div>
+            </div>
+            <button id="add-group-btn" type="button" class="compact-button">+ Add Group</button>
+          </div>
+        </fieldset>
+
+        <div class="task-plan-actions dialog-actions">
+          <button id="save-settings-btn" type="submit" class="primary">Save Settings</button>
+          <button id="close-settings-btn" type="button">Close</button>
+        </div>
+      </form>
     </dialog>
   </main>
 </body>

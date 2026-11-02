@@ -90,7 +90,7 @@ if (-not (Test-Path -LiteralPath $packageJsonPath)) { throw 'package.json missin
 $pkg = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
 $version = [string]$pkg.version
 if (-not $version) { throw 'Package version not defined in package.json.' }
-$expectedVersion = '0.1.0-preview.3'
+$expectedVersion = '0.2.0-preview.1'
 if ($version -ne $expectedVersion) {
     throw ('Expected version ' + $expectedVersion + ' in package.json, found ' + $version)
 }
@@ -177,10 +177,10 @@ try {
         Copy-ValidatedTree -Source $srcFile -Destination (Join-Path $uiTarget $uiFile)
     }
 
-    # Copy platforms/windows/ helpers (session-monitor.ps1, vault.ps1, hello.ps1, WindowsHello.cs, README.md)
+    # Copy platforms/windows/ helpers (session-monitor.ps1, vault.ps1, workspace.ps1, hello.ps1, WindowsHello.cs, README.md)
     $pwTarget = Join-Path $bundleRoot 'platforms/windows'
     New-Item -ItemType Directory -Path $pwTarget -Force | Out-Null
-    foreach ($winFile in @('session-monitor.ps1', 'vault.ps1', 'hello.ps1', 'WindowsHello.cs', 'README.md')) {
+    foreach ($winFile in @('session-monitor.ps1', 'vault.ps1', 'workspace.ps1', 'hello.ps1', 'WindowsHello.cs', 'README.md')) {
         $srcFile = Join-Path $root ('platforms/windows/' + $winFile)
         if (-not (Test-Path -LiteralPath $srcFile)) { throw ('Missing required native Windows helper: ' + $winFile) }
         Copy-ValidatedTree -Source $srcFile -Destination (Join-Path $pwTarget $winFile)
@@ -199,49 +199,7 @@ try {
     Assert-SafePathItem -Path (Join-Path $root 'package.json')
     $runtimePackage = [ordered]@{ name = 'auto-mate'; version = $version; private = $true; type = 'module' }
     [IO.File]::WriteAllText((Join-Path $bundleRoot 'package.json'), ($runtimePackage | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
-    $modelConfigFile = Join-Path $root 'model-config.json'
-    if (Test-Path -LiteralPath $modelConfigFile) {
-        Assert-SafePathItem -Path $modelConfigFile
-        $modelConfigRaw = Get-Content -LiteralPath $modelConfigFile -Raw | ConvertFrom-Json
-        if (-not $modelConfigRaw -or ($modelConfigRaw -is [Array])) {
-            throw 'model-config.json must be a JSON object.'
-        }
-        $allowedModelKeys = @('mode', 'endpoint', 'model')
-        foreach ($prop in $modelConfigRaw.PSObject.Properties) {
-            $k = $prop.Name
-            if ($allowedModelKeys -notcontains $k) {
-                throw ('model-config.json contains unknown or unauthorized property: ' + $k)
-            }
-            if ($k -match '(key|secret|token|password|auth|credential)') {
-                throw ('model-config.json contains forbidden secret-like key name: ' + $k)
-            }
-            if ($null -ne $prop.Value -and -not ($prop.Value -is [string])) {
-                throw ('model-config.json property ' + $k + ' must be a string value.')
-            }
-        }
-        if ($modelConfigRaw.endpoint) {
-            $parsedUri = $null
-            if (-not [System.Uri]::TryCreate([string]$modelConfigRaw.endpoint, [System.UriKind]::Absolute, [ref]$parsedUri)) {
-                throw ('model-config.json endpoint is not a valid absolute URI: ' + $modelConfigRaw.endpoint)
-            }
-            if (-not [string]::IsNullOrEmpty($parsedUri.UserInfo)) {
-                throw 'model-config.json endpoint must not contain embedded credentials (user:password@).'
-            }
-            if (-not [string]::IsNullOrEmpty($parsedUri.Query)) {
-                throw 'model-config.json endpoint must not contain query parameters.'
-            }
-            if (-not [string]::IsNullOrEmpty($parsedUri.Fragment)) {
-                throw 'model-config.json endpoint must not contain URL fragments.'
-            }
-            if ($parsedUri.Scheme -notin @('http', 'https')) {
-                throw ('model-config.json endpoint scheme must be http or https, found: ' + $parsedUri.Scheme)
-            }
-            if ($modelConfigRaw.mode -eq 'cloud' -and $parsedUri.Scheme -ne 'https') {
-                throw 'model-config.json endpoint must use https when mode is cloud.'
-            }
-        }
-        Copy-ValidatedTree -Source $modelConfigFile -Destination (Join-Path $bundleRoot 'model-config.json')
-    }
+    # model-config.json is obsolete in the application workspace and excluded from the release bundle.
     if (Test-Path -LiteralPath (Join-Path $root 'tsconfig.json')) {
         Copy-ValidatedTree -Source (Join-Path $root 'tsconfig.json') -Destination (Join-Path $bundleRoot 'tsconfig.json')
     }
@@ -418,9 +376,9 @@ No global installation of Bun, Node.js, Git, or browser binaries is required.
 - `bin\bun.exe`: Bundled Bun {1} x64 runtime.
 - `browsers\`: Bundled Playwright Chromium and headless shell resources.
 - `node_modules\`: Locked production dependencies, including Sharp's @img/colour and native Windows package.
-- `src\`: Application core workflows, policy broker, and vault interfaces.
+- `src\`: Agent workspace core engine, ReAct tool loop, workspace store, policy broker, and vault interfaces.
 - `ui\`: Owner application interface and hosted login assets.
-- `platforms\windows\`: Native session monitor, DPAPI vault, and Windows Hello integration scripts.
+- `platforms\windows\`: Native session monitor, DPAPI vault, workspace storage, and Windows Hello integration scripts.
 - `THIRD_PARTY_LICENSES.txt` and `licenses\`: Original license/copyright materials, source hashes, and source/rebuilding directions; vendor terms differ.
 - `RELEASE-MANIFEST.json`: Build provenance and cryptographic checksums.
 - `USE.md`: Application installation, owner workflow, and safe testing instructions.
@@ -428,32 +386,25 @@ No global installation of Bun, Node.js, Git, or browser binaries is required.
 
 ## How to Run
 
-### 1. Launch Owner Autofill Application (Standard GUI)
+### 1. Launch Agent Workspace Application (Standard GUI)
 Extract the ZIP archive and double-click `Auto-Mate.exe`, or run from terminal:
 ```powershell
 .\Auto-Mate.exe
 ```
-This opens the local Owner Autofill interface in Chromium. Inspect an HTTPS website, select
-a vault record, and authorize individual fields. Normal vault operations require successful
-Windows Hello OS verification; the demonstration/check path does not prove that success.
+This opens the local Auto-Mate Agent Workspace in Chromium. It features a conversational agent interface on the left with live browser preview on the right, along with tabs for Vault records, exact-origin Permission grants, and source-linked research Notes. Local vault operations require successful Windows Hello OS verification; the demonstration/check path does not prove that success.
 
-### 2. Launch Hosted Remote Service (Invite-Only)
-To run the Auto-Mate Hosted remote service with invite-only access:
+### 2. Launch Hosted Remote Service
+To run the Auto-Mate Hosted remote service:
 ```powershell
 .\Auto-Mate.exe --hosted
 ```
 This binds to a local port (or ephemeral port) and creates an outbound Cloudflare QuickTunnel HTTPS
-URL (or uses an existing reverse proxy configured via `AUTOMATE_HOSTED_PUBLIC_ORIGIN`), printing the URL
-and a registration invite code (minimum 16 characters) for authorized remote operators.
+URL (or uses an existing reverse proxy configured via `AUTOMATE_HOSTED_PUBLIC_ORIGIN`). An operator registration
+key can optionally be configured via `AUTOMATE_HOSTED_REGISTRATION_KEY`.
 
-Remote users register over HTTPS with an operator invite key, lowercase username (`^[a-z0-9][a-z0-9._-]{2,63}$`),
-and passphrase (>= 12 characters) protecting an isolated, server-side encrypted vault (AES-256-GCM + scrypt).
-Live observation renders a right-side preview on desktop, collapsing to a stacked layout on mobile. Discovered
-fields start unchecked. In hosted mode, users can request website button clicks with a dedicated modal
-confirmation popup. Sessions enforce a fixed 1-hour auth expiry (not inactivity). If the remote client disconnects
-or backgrounds for >5 seconds, the protected website closes and active approvals/one-offs are cleared, but the
-account key stays in memory until logout or fixed 1-hour expiry; resuming receives a fresh state and never resurrects
-old website authority.
+Remote users register over HTTPS with a lowercase username (`^[a-z0-9][a-z0-9._-]{2,63}$`) and passphrase
+(>= 12 characters) protecting an isolated, server-side encrypted vault and workspace (AES-256-GCM + scrypt).
+Live observation renders a right-side preview on desktop, collapsing to a stacked layout on mobile.
 
 ### 3. Run Offline Verification Smoke Test
 To verify DPAPI persistence, isolated browser automation, and local audit logging without
@@ -467,9 +418,8 @@ requiring hardware biometric gestures:
 - **Host Operator Trust**: In hosted mode, the host machine executes Chromium and holds active decryption keys in process memory during an authenticated session; the host operator can access active plaintext values. Hosted mode is not zero-knowledge.
 - **Local Runtime**: Auto-Mate does not configure a telemetry collector or cloud vault sync. Destination websites and the bundled browser have their own networking behavior and terms.
 - **Per-User Storage**: Vault: `%LOCALAPPDATA%\Auto-Mate\vault.json` (local mode) or `%LOCALAPPDATA%\AutoMate\hosted\` (hosted mode); audit: `%LOCALAPPDATA%\AutoMate\audit\`. Deleting the app folder does not delete these files.
-- **Fill & Action Boundaries**: Local desktop autofill is strictly fill-only; it does not click submit or payment controls. Hosted mode permits user-approved website button clicks via dedicated modal confirmation. Receiving page scripts can read or react to filled values; Stop cannot undo an earlier disclosure.
-- **Model Planning & Observation Boundary**: The external model API receives metadata only and requires explicit user consent. After a fill or approved website click, external model observation is blocked because the receiving page may echo values; users can explicitly select "Map locally / ask me · No API", with no automatic fallback.
-- **Remaining Gates**: Successful Hello remains hardware-unverified (`DeviceNotPresent`); the provided model endpoint previously passed real probes but currently returns 404 ERR_NGROK_3200 with unverified model weights identity; positive biometric/PIN, actual OS lock/disconnect, clean-machine behavior, signing, recovery, and independent security review remain unverified.
+- **Interactive Agent & Action Boundaries**: Agent interactions operate through an AgentEngine ReAct JSON tool loop with live preview, host-side redaction of known vault values, masked interactive controls, and explicit Stop/revoke controls. Destination website scripts receive approved filled values; Stop cannot undo an earlier disclosure.
+- **Model Planning & Observation Boundary**: Model configuration is managed per-user in Workspace Settings (OpenAI-compatible chat completion endpoint, API key, model selection). No model screenshots are sent; known secrets are redacted host-side in signed-in DOM observations.
 '@
     $releaseNotes = $releaseNotesTemplate -f $version, $bunVersion, $zipFileName, $archiveHash, $archiveSizeMB
     [System.IO.File]::WriteAllText((Join-Path $distApp 'RELEASE-NOTES.md'), $releaseNotes, $utf8NoBom)

@@ -4,22 +4,32 @@ Consolidated project memory from all available Auto-Mate conversations through t
 
 ## Current user decisions — read these first
 
-1. **Continue with the website, not a browser extension**: The earlier extension idea (including automatic file filling) was explicitly cancelled. Do not resume extension development or promise arbitrary file autofill. Focus strictly on the actual application.
-2. **Prioritize testing and stabilization**: Focus on testing existing features and fixing demonstrated bugs over feature creep. Do not infer extra scope or translate correctness requests into guarantees of zero bugs or perfect security.
-3. **API only; no model setup or hosting**: The user initially mentioned Qwen3.5-9B on Google Colab, then explicitly clarified: **they will provide an OpenAI-compatible API; do not set up the model**. Do not download weights, install model-serving software, create notebooks/tunnels, or provision GPUs. The application is configured with the user-provided API (`https://nullify-geometric-decathlon.ngrok-free.dev/v1/chat/completions`, model `qwen3.5-9b`). The server exposes `POST /v1/chat/completions` only with no `/models` endpoint; model identity is unverified (do not claim 9B weights verified). Real metadata-only probes have passed.
-4. **Download needed software only**: Install/verify software actually needed for supported running/testing: pinned official Bun 1.4.4, Playwright Chromium, and official pinned Cloudflare tunnel helper `cloudflared` v2026.10.7 with SHA-256 verification. Never buy cloud compute, widen Windows firewall rules, or change repository visibility.
-5. **Application-only private release (`v0.1.0-preview.3`)**: The Windows application repository and releases remain **private**. The application release package (`dist/app/Auto-Mate-0.1.0-preview.3-windows-x64.zip`) contains only the application, launcher, bundled runtime, and license files; never include the marketing homepage, demo film, or maintainer context.
-6. **Stop marketing work in app repository**: Marketing work lives exclusively in the separate public repository [Auto-Mate-homepage](https://github.com/anujparwal/Auto-Mate-homepage). Earlier requests for a fake marketing video and full-device-width loop video without controls are historical to that separate repository. Do not rebuild the application to change marketing assets.
-7. **Dual operating modes: Local Desktop vs. Hosted Mode**:
-   - **Local Desktop Mode** (`bun start` / `Auto-Mate.exe`): Uses native Windows Hello and DPAPI v2 on the local Windows PC. Autofill is strictly fill-only; it never clicks Login, Pay, or Submit.
-   - **Hosted Mode** (`bun run host` / `Auto-Mate.exe --hosted`): Approved by the user with four explicit choices:
-     1. *Invite-only registration*: Protected by an operator registration invite key; no open registration.
-     2. *HTTPS Internet link*: Ephemeral Cloudflare QuickTunnel (`https://*.trycloudflare.com`) or custom reverse proxy (`AUTOMATE_HOSTED_PUBLIC_ORIGIN` + `AUTOMATE_HOSTED_PORT`).
-     3. *Remote authentication*: Strictly lowercase ASCII username (3–64 chars, `^[a-z0-9][a-z0-9._-]{2,63}$`, no case-folding) + chosen passphrase (≥12 chars) instead of Windows Hello, which remains for local desktop mode. Each account receives an isolated vault encrypted with AES-256-GCM and memory-hard scrypt ($N=32768, r=8, p=1$). In-memory decryption keys are zeroed upon session close.
-     4. *Fill + separate explicit modal approval for website button clicks*: Remote users observe masked frames in a live right pane. Discovered fields start unchecked and require final confirmation. Website button clicks (Login, Submit, Next, Pay, or destructive) require separate explicit manual approval via a dedicated modal confirmation popup. The AI model never clicks buttons or submits forms autonomously.
-8. **QuickTunnel SSE bug resolution**: Cloudflare QuickTunnel dropped SSE stream bodies (initial stream state arrived locally, but public HTTPS bodies never arrived). Replaced SSE entirely with regular authenticated JSON polling (`GET /api/updates?after=sequence` at 500 ms client poll intervals, with a 5-second disconnect timeout revoking active authority with `stop`). Docs must not promise SSE.
-9. **Variable scope and missing info dialog**: User approved **Shared profiles, site-bound credentials**: general profile variables (names, general text) can be saved as shared profiles; credentials (usernames, passwords) remain strictly site-bound. Sequential missing-info dialog prompts for unknown fields; user enters locally; secret values never reach the model.
-10. **Strict flat JSON model contract**: Form mapping in `InformationPlanner` requires the model to return a flat JSON map `{ [fieldId: string]: string | null }` matching all discovered field IDs to compatible available variable IDs or null. Extra keys, missing keys, markdown fences, and malformed JSON fail closed.
+1. **Continue with the application, not a browser extension or demo site**: Extension development remains cancelled. Marketing/demo site work lives exclusively in the separate public repository `anujparwal/Auto-Mate-homepage`. Focus strictly on the actual application workspace and app-only releases.
+2. **Simplified Agent Workspace layout**: Redesigned UI matching the application layout:
+   - **Left column**: "Chats between the user and the agent" (`chat-column`) with prompt input, Send, and Stop controls.
+   - **Right column (top)**: Live Masked Preview of the browser with origin badge, status badge, and off-page Sharp redaction (opaque black masking over all controls and iframes, reflected private values masked). Screenshots are strictly owner-only and **never sent to the AI model**.
+   - **Right column (bottom)**: "Vault and permissions" with three tabs:
+     - **Variables**: vault variable catalog (id, name, description, kind, scope, origin) and "+ Add Variable" modal.
+     - **Ongoing Permissions**: quick grant to active site, task-scoped direct-fill grants, and revocation controls.
+     - **Notes Space**: live research notes recorded by orchestrator and evaluator subagents with verbatim source quotes.
+3. **AgentEngine ReAct strict JSON tool loop**: The legacy form-planner flow (`model-config.json`, `application-planner.ts`, static form autofill) is **no longer used by the actual app** and is marked explicitly historical. The app operates an autonomous ReAct loop returning strict JSON actions: `{"tool":"tool_name","args":{...},"status":"..."}`. Tools include `navigate`, `observe`, `scroll`, `click`, `type` (for public search only), `request_information` (for private information filling through host only, never in chat/type), `take_note` (source-linked note with verbatim evidence quote), `spawn_subagents` (cookie-less parallel evaluator workers), and `finish_task`.
+4. **API only; no model setup or hosting**: The user supplies an OpenAI-compatible API; no local model weights, GPU setup, Colab notebook, or model hosting is provided or required. The previously configured ngrok endpoint (`https://nullify-geometric-decathlon.ngrok-free.dev/v1/chat/completions`, model `qwen3.5-9b`) returned HTTP 404 (`ERR_NGROK_3200`: ngrok tunnel offline), so live model inference is not verified. When a model endpoint fails or is unreachable, the error is displayed visibly to the user (e.g. `PLANNER_UNAVAILABLE`); **no fake fallback or reviewed-command mode exists in the new app**.
+5. **Per-user Settings & Encrypted Workspace Store**: Settings are managed in the ⚙️ Settings dialog and persisted encrypted per user via `src/workspace-store.ts` + `platforms/windows/workspace.ps1` (DPAPI `CurrentUser`) on desktop, or AES-256-GCM encrypted workspace files in hosted mode:
+   - **Model provider presets**: OpenAI, Groq, OpenRouter, Ollama, LM Studio, and Custom. Hosted mode strictly permits cloud HTTPS endpoints (local loopback forbidden). Local Desktop mode permits genuine loopback (`localhost`, `127.0.0.1`, `::1`) or cloud HTTPS.
+   - **Navigation policy**: Configurable `whitelist` or `blacklist` mode with domain rules (automatically covers subdomains, e.g. `example.com` covers `*.example.com`). Off-policy navigations fail closed.
+   - **Opt-in permanent memory vs. evidence notes**: Permanent memory is opt-in (toggle + editable up to 32 KiB) and persists across tasks. Research notes (up to 100 notes) are captured dynamically during tasks and require verbatim quotes from observed public pages.
+   - **Variable groups**: Users can define up to 32 groups (up to 32 variables each) for bulk task-scoped grants.
+6. **Variable metadata vs. private values**: The model receives only variable metadata (`id`, `name`, `description`, `kind`, `scope`, `available`) with known private values redacted (`[private]`). Secret values and ciphertexts **never reach the model**. The host controller retrieves and fills values directly into the browser.
+7. **Exact origin / site-bound credentials vs. shared profile**: Credential variables (`username`, `password`) are strictly site-bound to an exact HTTPS origin. Non-credential variables (`text`, `email`, `tel`, etc.) can be saved as shared profiles reusable across authorized origins.
+8. **Private unknown-field dialog**: When a website needs data not present in the vault, the agent invokes `request_information`, opening a local modal dialog. The user enters the value privately, can optionally save it as a site-bound or shared profile variable with name and description, or skip it. Secret values never pass through chat or model prompts.
+9. **Permissions: one-off vs. task-scoped grants & revocation**: Sensitive website actions (button clicks, submissions) and ungranted variable disclosures require explicit modal confirmation. Users can grant task-scoped permissions for specific variables or variable groups to an active origin (`workspace-grant`), and revoke them at any time (`workspace-revoke` or Stop).
+10. **Windows Hello native reads**: In Local Desktop mode, reading vault secrets for field filling enforces native Windows Hello verification.
+11. **Safe Stop and Cancellation**: The Stop button or follow-up instructions safely abort the active task controller, close the active browser context, cancel pending dialogs, clear task grants, and reset the live preview.
+12. **Cookie-less parallel evaluator subagents**: `spawn_subagents` runs parallel, signed-out browser contexts (`research` worker contexts) that evaluate independent candidate URLs without user cookies, credentials, or interaction handles, extracting source-quoted findings.
+13. **Approval is not proof**: Buttons require user approval; after private filling, main-browser navigation and link clicks require approval too. Approved actions may complete real purchases. The model is instructed not to invent success, but users must verify website confirmations/receipts.
+14. **Simplified Hosted Registration**: Registration in Hosted Mode operates with lowercase username and strong passphrase (≥12 characters) without requiring an operator invite code by default. Optional operator invite code can be configured via `AUTOMATE_HOSTED_REGISTRATION_KEY`.
+15. **Railway trial ended**: The prior deployment trial on Railway has ended; documentation notes this as historical. Local desktop mode and self-hosted mode (QuickTunnel or custom reverse proxy) remain active.
+16. **Version target**: `0.2.0-preview.1`, unsigned private application preview. The prior `v0.1.0-preview.3` is immutable. Release packages exclude homepage/demo assets and maintainer conversation context.
 ## Original product vision (2026-10-30)
 
 The user proposed a secure local/cloud-model browser agent for forms, setup, login, signup, and related tasks, targeting **Windows and Android**. Credentials would remain in an OS-authenticated local vault, never reach the model, and be used only by deterministic trusted code through opaque references.
@@ -177,13 +187,63 @@ The initial wish list also included configurable categories, destination blackli
   - Host operator and TLS reverse proxy have access to active process memory and plaintext values. Hosted mode is not zero-knowledge.
   - QuickTunnel is for temporary testing only (no SLA, URLs change on restart, connection limits, polling not SSE); production requires stable reverse proxy configuration (`AUTOMATE_HOSTED_PUBLIC_ORIGIN` + `AUTOMATE_HOSTED_PORT`).
   - Local desktop Windows Hello/DPAPI trust remains separate.
-- **Version target**: `v0.1.0-preview.3` private application preview. App-only release; marketing homepage and demo film excluded. Existing `v0.1.0-preview.2` release remains immutable.
-- **Record of decisions**: Context contains only recorded decisions and verified system state, with no invented conversation transcripts.
+- **Historical status of 0.1.0-preview.3**: `v0.1.0-preview.3` is an immutable published GitHub release. The legacy form-planner flow (`model-config.json`, `application-planner.ts`, reviewed-command mode) is explicitly historical and no longer used by the actual app.
+
+## Simplified Agent Workspace, ReAct Tool Loop, and Workspace Store (0.2.0-preview.1)
+
+- **Architecture cutover**: Completely transitioned from the old form-autofill flow to an autonomous Agent Workspace powered by `AgentEngine`, a ReAct strict JSON tool loop (`{"tool":"tool_name","args":{...},"status":"..."}`).
+- **Current UI layout**:
+  - **Left column**: "Chats between the user and the agent" (`chat-column`) with prompt input, Send, and Stop controls.
+  - **Right column (top)**: Live Masked Preview with active origin badge, live status, and off-page Sharp redaction compositing black opaque masks over all controls, iframes, and reflected secrets. Screenshots are strictly host-rendered owner previews and are **never sent to the AI model**.
+  - **Right column (bottom)**: "Vault and permissions" with three tabs:
+    - **Variables**: vault variable catalog (id, name, description, kind, scope, origin) and "+ Add Variable" modal.
+    - **Ongoing Permissions**: quick grant to active site, task-scoped direct-fill grants, and revocation controls.
+    - **Notes Space**: live research notes recorded by orchestrator and evaluator subagents with verbatim source quotes.
+- **ReAct toolset**:
+  - `navigate`: navigates to public HTTPS URL within whitelist/blacklist policy.
+  - `observe`: observes current page structure and text.
+  - `scroll`: scrolls `up` or `down`.
+  - `click`: clicks links directly, or requests user confirmation for buttons and actions.
+  - `type`: public search only; strictly forbidden for credential or sensitive inputs.
+  - `request_information`: requests host-side filling of private vault variables into form fields. Secrets are injected host-side into the browser via `fill()`, never exposed to the model or chat.
+  - `take_note`: captures topic, content, source URL, and a required verbatim evidence quote from the observed public page.
+  - `spawn_subagents`: runs parallel, cookie-less evaluator workers (`research` contexts) across candidate URLs without user cookies, credentials, or interaction handles, extracting source-quoted findings.
+  - `finish_task`: delivers the final synthesized answer citing recorded evidence.
+- **Per-user Settings & Workspace Store**:
+  - Added `src/workspace-store.ts` and `platforms/windows/workspace.ps1` providing per-user DPAPI-encrypted storage (`CurrentUser`) in desktop mode and AES-256-GCM encrypted workspace storage in hosted mode.
+  - Persists user model settings, navigation policies, permanent memory, variable groups, and research notes without writing secrets to plaintext.
+  - Built-in provider presets: OpenAI, Groq, OpenRouter, Ollama, LM Studio, and Custom OpenAI-compatible endpoints.
+  - Boundary validation: Hosted mode strictly enforces cloud HTTPS endpoints (local loopback forbidden). Local Desktop mode permits genuine loopback (`localhost`, `127.0.0.1`, `::1`) or cloud HTTPS.
+  - Navigation policy: `whitelist` or `blacklist` mode with domain rules (automatically covers subdomains, e.g. `example.com` covers `*.example.com`).
+  - Opt-in permanent memory (toggle + editable up to 32 KiB) vs evidence notes (up to 100 notes with verbatim quotes).
+  - Variable groups: up to 32 groups (up to 32 variables each) for bulk task-scoped grants.
+- **Vault privacy & permissions**:
+  - The model receives only variable metadata (`id`, `name`, `description`, `kind`, `scope`, `available`) with known private values redacted (`[private]`). Secret values and ciphertexts never reach the model.
+  - Credential variables (`username`, `password`) are strictly site-bound to an exact HTTPS origin. Non-credential variables (`text`, `email`, `tel`, etc.) can be saved as shared profiles.
+  - Missing-information dialog: when an unknown field needs data, a local modal dialog allows the user to enter the value privately, optionally save it as a site-bound or shared variable with name and description, or skip it.
+  - One-off modal approvals vs task-scoped variable/group direct-fill grants (`workspace-grant`) and revocation (`workspace-revoke` or Stop).
+  - In Local Desktop mode, reading vault secrets for field filling enforces native Windows Hello verification.
+  - Stop button or follow-up instructions safely abort the active task controller, close the active browser, cancel pending dialogs, clear task grants, and reset preview.
+- **Evaluators and purchase protection**:
+  - `spawn_subagents` launches parallel evaluator workers (signed-out, cookie-less browser contexts) to independently check candidate URLs and verify findings with verbatim quotes.
+  - Sensitive actions require confirmation; source notes contain verified quotes only, not generated interpretations. Final model synthesis remains fallible, and purchase confirmation must be checked by the user.
+- **Hosted mode simplified registration & operational limits**:
+  - Registration in Hosted Mode operates with lowercase username and strong passphrase (≥12 characters) without requiring an operator invite code by default. Optional operator invite code can be configured via `AUTOMATE_HOSTED_REGISTRATION_KEY`.
+  - Host operator and admin processes have access to active process memory and plaintext values. Hosted mode is not zero-knowledge.
+  - Redaction bypass transformations: known vault values are redacted host-side in signed-in DOM observations and URLs (`[private]`). Privacy is best-effort against malicious sites that encode or transform secrets (user explicitly accepted redacted signed-in observation over strict public-only).
+  - Screenshots are strictly host-rendered owner previews and are never sent to the model.
+  - Anything typed in manual chat or saved in permanent memory is sent to the configured model provider. Users must keep secrets out of chat and memory!
+  - Persistent volume mounts and backups are required for hosted storage (`%LOCALAPPDATA%\AutoMate\hosted\` or `/data`).
+  - Railway trial ended: prior deployment trial on Railway has ended; local desktop mode and self-hosted mode (QuickTunnel or custom reverse proxy) remain active.
+- **Model endpoint errors**:
+  - Model endpoint errors (e.g. `PLANNER_UNAVAILABLE`, `INVALID_AGENT_RESPONSE`, 404, connection failure) are displayed cleanly in the UI and error banners. No fake fallback or reviewed-command mode exists in the new app.
+- **Status and target version**:
+  - Version target: `0.2.0-preview.1`; GitHub PR/release status is authoritative. The application-only release target is https://github.com/anujparwal/Auto-Mate/releases/tag/v0.2.0-preview.1.
 ## Current boundaries that must not regress
 
-- Models cannot access plaintext, ciphertext exports, vault listings, browser handles, owner pixels, or grant APIs. Approval authorizes trusted insertion, not secret delivery to AI.
-- Exact HTTPS origins and task/field/category scope matter. No wildcards, silent origin migration, invented selectors, automatic authority, or authentication downgrade.
-- Normal native operations require actual OS verification. Synthetic tests are restricted to isolated temporary paths, separate DPAPI entropy, and `.test` origins; they are not a bypass for real domains or normal vaults.
+- Models receive variable names/descriptions and other bounded metadata by design, but cannot invoke vault reads, ciphertext exports, internal browser handles, owner pixels, or grant APIs. Approval authorizes host insertion, not secret delivery as a model tool.
+- Exact HTTPS origins and task/field scope matter. No silent origin migration, invented selectors, automatic authority, or authentication downgrade. Site navigation policy includes subdomains and is not a complete firewall for third-party site resources.
+- Normal native vault reads require Windows Hello. Synthetic broker tests use isolated paths/entropy; browser integration fixtures use injected public DNS and independent contexts, not production `.test` bypasses.
 - Audit failure stops execution; diagnostics/journals must not expose URLs, private IDs, credential values, tokens, or secret fingerprints.
 - Do not claim remote signup/login/payment success from filling alone, universal redaction, hard real-time teardown, signed distribution, or independent security review.
 - Public homepage hosting distributes reviewed static marketing files and the labeled simulated film only. It must never expose owner commands, native brokers, application vaults, model keys, or a local vault HTTP port. Public application archives require a separate explicit distribution decision.
@@ -211,3 +271,18 @@ The initial wish list also included configurable categories, destination blackli
 ## Conversation sources
 
 Available Auto-Mate session references (for local archive lookup, not public data): `01a18d51-4039` (original vision/security/Windows+Android/repository), `01a19173-5048` (categories/owner approval/audit/history/cancellation), `01a19246-dfe4` (prototype/real-site autofill/Vault/glitch/extension idea), and `01a192d7-965c` (website-only testing, Qwen/Colab/software/docs/PR/public-local architecture). Move-only/empty sessions add no product decisions. Future assistants should update this file when user decisions, evidence, or release gates change—not append unverified claims as completed work.
+
+## Workspace verification handoff
+
+- The user explicitly chose **redacted signed-in observations** instead of a strict cookie-less mirror for the main browser, accepting that hostile sites can transform values to evade known-value matching. Research workers remain signed out; model requests never include preview images.
+- Removed unused `src/application-planner.ts` and credential-free `model-config.json`; providers are configured in per-user encrypted Settings.
+- Typecheck and the complete 300-test suite passed. A subsequent encoded-value observation-cutoff regression reproduced a real leak, then passed after extending host-side collection before redaction/truncation.
+- Actual native UI smoke exercised private unknown-email entry, same-request draft preservation, saved metadata, individual/group direct-fill permission, separate Login approval, two parallel source evaluators, source notes, and masked preview. The labelled local HTTP protocol fixture made eight model requests without either supplied credential value; it was not Qwen or live model inference.
+- Streaming conversation remained inside a 1000px-high desktop viewport; the mobile layout fit 390px. Stop remained available after task completion, closed the actual task browser, cleared grants, and removed its preview.
+- Native DPAPI/browser smoke and native/hosted encrypted workspace tests passed. Positive Windows Hello hardware verification remains unexercised.
+- The prior supplied ngrok model endpoint was offline. A working user-supplied API is still required for live AI inference; there is no fallback model, Colab notebook, or model-hosting setup.
+- `/healthz` is a stateless readiness probe. The Linux container uses non-root uid 1000 and keeps Chromium sandboxing enabled; Linux execution remains unverified because this workstation lacks a running Docker daemon. Provider persistent storage and namespace support must be verified before public production use.
+- Restarted the real hosted prototype on the updated backend while preserving `%LOCALAPPDATA%/AutoMate/hosted`. Current temporary HTTPS link: https://diagnosis-generator-lyric-champions.trycloudflare.com. The operator laptop and `AutoMateHostedWorkspace` service must remain running; the QuickTunnel URL changes on restart.
+- Actual HTTPS browser smoke verified account creation without an operator code, hosted local-model controls disabled, encrypted model-key configuration reported without redisplaying the key, profile-variable creation showing metadata but not its private value, and a deliberately unavailable QA model showing an explicit error with no fallback or fabricated browser result.
+- Actual connection-loss smoke disabled Send, closed the private settings dialog and erased its unsaved key; reconnection restored controls from a fresh snapshot. Logout returned `/login` and removed the session cookie. The disposable client was closed; no synthetic model server remains running.
+- Workspace PR created: https://github.com/anujparwal/Auto-Mate/pull/13 (`feat/agent-workspace` → `main`). Review/CI and final release publication are tracked on GitHub; release target remains `v0.2.0-preview.1`.
